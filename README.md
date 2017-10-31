@@ -7,6 +7,6 @@ Es werden jeweils 2 Accounts für jedes aktive Ziel angelegt:
 - KONTO und DEPOT
 
 # Tipp: 
-Zusammen als Kontogruppe mit Kontostand in Saldenleiste zusammenfassen, dann hat man den Gesamtwert des Ziels 
+Zusammen als **Kontogruppe** mit *"Kontostand in Saldenleiste anzeigen"* zusammenfassen, dann hat man den Gesamtwert des Ziels 
 ![MoneyMoney screenshot Kontosaldo](Screenshots/Kontosaldo.png)
 ![MoneyMoney screenshot Kontogruppe](Screenshots/Kontogruppe.png)
