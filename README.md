@@ -1,5 +1,5 @@
 # moneymoney-whitebox
-An Extension to query your Whitebox.eu goals in MoneyMoney
+An Extension to query your Whitebox.eu goals in [MoneyMoney](https://moneymoney-app.com).
 
 * Es werden 2 Accounts für jedes aktive Ziel angelegt:
 * KONTO und DEPOT
