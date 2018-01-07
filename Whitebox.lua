@@ -31,8 +31,12 @@
 -- Es werden 2 Accounts für jedes aktive Ziel angelegt
 -- KONTO und DEPOT
 -- Tipp: Zusammen als Kontogruppe mit Kontostand in Saldenleiste zusammenfassen, dann hat man den Gesamtwert des Ziels
+--
+-- Historie:
+-- 1.00         Initial
+-- 1.01                Fix for Currencies in Depot
 
-WebBanking{version     = 1.00,
+WebBanking{version     = 1.01,
            url         = "https://www.whitebox.eu/sessions/new",
            services    = {"Whitebox"},
            description = "Whitebox"}
@@ -174,6 +178,13 @@ function RefreshAccount(account, since)
                                 local Anteile = element:children():get(5)
                                 local Wert = element:children():get(6)
 
+                                -- Beträge aufbereiten
+                                -- . löschen
+                                Wert = string.gsub(Wert:text(), "%.", "")
+
+                                -- Trennen von Betrag und Währung
+                                local Betrag, Waehrung = string.match(Wert, '(-?%d+,?%d+)%s*(%w+)' )
+
                                 -- Trennen DD.MM.YYYY DD.MM.YYYY
                                 -- Buchungstag Valuta
 
@@ -184,7 +195,8 @@ function RefreshAccount(account, since)
                                                 bookingDate = DateStr2Timestamp( buch1 ),
                                                 valueDate = DateStr2Timestamp( buch2 ),
                                                 purpose = Buchungsinformationen:text() .. "\n" .. Assetklasse:text() .. "\n" .. Produktbezeichnung:text() .. "\n" .. Anteile:text() ,
-                                                amount = Text2Val ( Wert:text() )
+                                                amount = Text2Val ( Betrag ),
+                                                currency = Waehrung
                                         }
                                 )
                         end
@@ -230,4 +242,4 @@ function EndSession ()
         local content, charset, mimeType = connection:post(url ,"_method=delete")
 end
 
--- SIGNATURE: MC4CFQCWXZxG3PF0Azk71FcWNFKHU3bHrQIVAJSevJ8V9kAFvjQ8xFiaRx7YmR2Y
+-- SIGNATURE: MC4CFQCPX512JvAf0d/8pa6y1uuH+wTEOQIVAIw7cnRNzdj0yaYlGQsLWpgMherg
