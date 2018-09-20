@@ -33,10 +33,11 @@
 -- Tipp: Zusammen als Kontogruppe mit Kontostand in Saldenleiste zusammenfassen, dann hat man den Gesamtwert des Ziels
 --
 -- Historie:
--- 1.00         Initial
--- 1.01                Fix for Currencies in Depot
+-- 1.00			Initial
+-- 1.01			Fix for Currencies in Depot
+-- 1.02			Fix for ListAccounts 
 
-WebBanking{version     = 1.01,
+WebBanking{version     = 1.02,
            url         = "https://www.whitebox.eu/sessions/new",
            services    = {"Whitebox"},
            description = "Whitebox"}
@@ -75,40 +76,36 @@ end
 
 function ListAccounts(knownAccounts)
     local accounts = {}
-
-    loginresponse:xpath("//*/div[@class='goal-actions no-split']"):each(
+	
+	-- Buttons Einzahlen, um alle aktiven Goals zu bekommen
+    loginresponse:xpath("//*/a[@class='js-deposit deposit-btn']"):each(
         function(index, element)
             local accountType = AccountTypeGiro
-            if element:attr("data-tracking-model") == "SavingsAccountTile" then
-                accountType = AccountTypeSavings
-            end
 
-                        local goal = string.match(element:children():attr("href") , "/goals/(.+)/projection")
+			local goal = string.match(element:attr("href") , "/goals/(.+)/projection")
 
-                           -- Insert Konto
-                           -- Präfix KONTO_
-                           table.insert(accounts,
-                    {
-                            name = "Konto " .. goal,
-                            accountNumber = "KONTO_" .. goal,
-                                        currency = "EUR",
-                                   type = AccountTypeSavings
-                           }
-                   )
+			-- Insert Konto
+			-- Präfix KONTO_
+			table.insert(accounts,
+            {
+				name = "Konto " .. goal,
+                accountNumber = "KONTO_" .. goal,
+                currency = "EUR",
+                type = AccountTypeSavings
+            })
 
-                   -- Insert Portfolio / Depot
-                   -- Präfix DEPOT_
-                   table.insert(accounts,
-                    {
-                            name = "Depot " .. goal,
-                            accountNumber = "DEPOT_" .. goal,
-                                        currency = "EUR",
-                                   type = AccountTypePortfolio
-                           }
-                   )
+            -- Insert Portfolio / Depot
+            -- Präfix DEPOT_
+            table.insert(accounts,
+            {
+                name = "Depot " .. goal,
+                accountNumber = "DEPOT_" .. goal,
+                currency = "EUR",
+                type = AccountTypePortfolio
+            })
         end
     )
-        return accounts
+    return accounts
 end
 
 --------------------------------------------------------------------------------------------------------------------------
