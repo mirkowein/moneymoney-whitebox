@@ -33,9 +33,9 @@
 -- Tipp: Zusammen als Kontogruppe mit Kontostand in Saldenleiste zusammenfassen, dann hat man den Gesamtwert des Ziels
 --
 -- Historie:
--- 1.00			Initial
--- 1.01			Fix for Currencies in Depot
--- 1.02			Fix for ListAccounts 
+-- 1.00                        Initial
+-- 1.01                        Fix for Currencies in Depot
+-- 1.02                        Fix for ListAccounts
 
 WebBanking{version     = 1.02,
            url         = "https://www.whitebox.eu/sessions/new",
@@ -76,19 +76,19 @@ end
 
 function ListAccounts(knownAccounts)
     local accounts = {}
-	
-	-- Buttons Einzahlen, um alle aktiven Goals zu bekommen
+
+        -- Buttons Einzahlen, um alle aktiven Goals zu bekommen
     loginresponse:xpath("//*/a[@class='js-deposit deposit-btn']"):each(
         function(index, element)
             local accountType = AccountTypeGiro
 
-			local goal = string.match(element:attr("href") , "/goals/(.+)/projection")
+                        local goal = string.match(element:attr("href") , "/goals/(.+)/projection")
 
-			-- Insert Konto
-			-- Präfix KONTO_
-			table.insert(accounts,
+                        -- Insert Konto
+                        -- Präfix KONTO_
+                        table.insert(accounts,
             {
-				name = "Konto " .. goal,
+                                name = "Konto " .. goal,
                 accountNumber = "KONTO_" .. goal,
                 currency = "EUR",
                 type = AccountTypeSavings
@@ -239,4 +239,4 @@ function EndSession ()
         local content, charset, mimeType = connection:post(url ,"_method=delete")
 end
 
--- SIGNATURE: MC4CFQCPX512JvAf0d/8pa6y1uuH+wTEOQIVAIw7cnRNzdj0yaYlGQsLWpgMherg
+-- SIGNATURE: MCwCFHmB3Vs3bP/OzxS7v//YoiFcbnCJAhRCRr64VAuYrUHimSLNRuYV+Sp75w==
