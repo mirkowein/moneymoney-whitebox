@@ -36,9 +36,10 @@
 -- 1.00                        Initial
 -- 1.01                        Fix for Currencies in Depot
 -- 1.02                        Fix for ListAccounts
+-- 1.03                        Fix for Login
 
-WebBanking{version     = 1.02,
-           url         = "https://www.whitebox.eu/sessions/new",
+WebBanking{version     = 1.03,
+           url         = "https://www.whitebox.eu/login",
            services    = {"Whitebox"},
            description = "Whitebox"}
 
@@ -239,4 +240,4 @@ function EndSession ()
         local content, charset, mimeType = connection:post(url ,"_method=delete")
 end
 
--- SIGNATURE: MCwCFHmB3Vs3bP/OzxS7v//YoiFcbnCJAhRCRr64VAuYrUHimSLNRuYV+Sp75w==
+-- SIGNATURE: MCwCFCELhBlgx0KVwGeH4WmLc9CyKTkxAhRfMF8zvVsoJn9R7O96uRb/eYWTBQ==
