@@ -4,7 +4,7 @@ An Extension to query your Whitebox.eu goals in [MoneyMoney](https://moneymoney-
 ![MoneyMoney screenshot mit Whitebox](Screenshots/Whitebox.png)
 
 Es werden jeweils 4 Accounts für jedes aktive Ziel angelegt:
-- KONTO = Umästze Cash
+- KONTO = Umsätze Cash
 - DEPOT = Umsätze im Depot
 - PORTFOLIO = Bestand ETF 
 - PERFORMANCE = Nur Informationen: Erfolgsrelevante Kapitalveränderungen, Geldgewichtete Rendite annualisiert, Geldgewichtete Rendite, Vermögensstand
