@@ -13,9 +13,9 @@ Es macht Sinn als Kontogruppe zu gruppieren. Also KONTO und DEPOT hat in der Sum
 Es macht keinen Sinn DEPOT und PORTFOLIO zu haben. Sie sind 2 Darstellungen des selben Vermögens. Die Summe wäre dann doppelt in Ihren Übersichten. 
 
 Kurz:
-KONTO + DEPOT oder
-KONTO + PORTFOLIO
-PERFORMANC optional dazu.
+- KONTO + DEPOT oder
+- KONTO + PORTFOLIO
+- PERFORMANC optional dazu.
 
 ## Tipp: 
 Zusammen als **Kontogruppe** mit *"Kontostand in Saldenleiste anzeigen"* zusammenfassen, dann hat man den Gesamtwert des Ziels 
