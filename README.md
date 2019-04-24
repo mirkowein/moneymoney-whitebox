@@ -8,8 +8,10 @@ Es werden jeweils 4 Accounts für jedes aktive Ziel angelegt:
 - DEPOT = Umsätze im Depot
 - PORTFOLIO = Bestand ETF 
 - PERFORMANCE = Nur Informationen: Erfolgsrelevante Kapitalveränderungen, Geldgewichtete Rendite annualisiert, Geldgewichtete Rendite, Vermögensstand
+
 Es macht Sinn als Kontogruppe zu gruppieren. Also KONTO und DEPOT hat in der Summe den Vermögensstand. Oder KONTO und PORTFOLIO.
 Es macht keinen Sinn DEPOT und PORTFOLIO zu haben. Sie sind 2 Darstellungen des selben Vermögens. Die Summe wäre dann doppelt in Ihren Übersichten. 
+
 Kurz:
 KONTO + DEPOT oder
 KONTO + PORTFOLIO
