@@ -40,8 +40,8 @@
 -- 1.04                        New performance account for displaying Whitebox performance
 -- 1.05                        New portfolio account. You may have to choose from DEPOT or PORTFOLIO.
 
-WebBanking{version     = 1.05,
-           url         = "https://www.whitebox.eu/login",
+WebBanking{version     = 1.06,
+           url         = "https://www.whitebox.eu/sessions/new",
            services    = {"Whitebox"},
            description = "Whitebox"}
 
@@ -60,6 +60,7 @@ local connection = Connection()
 function InitializeSession (protocol, bankCode, username, username2, password, username3)
     connection.language = "de-de"
 
+        print ("Version" .. version)
     local response = HTML(connection:get(url))
 
     response:xpath("//input[@name='session[email]']"):attr("value", username)
@@ -149,7 +150,7 @@ function RefreshAccount(account, since)
                 type_text = 'Kontostand:'
 
                 -- build url
-                        url = "https://www.whitebox.eu/goals/" .. goal .. "/statements?statements_query[start_date]=" .. timeStr
+                        url = "https://inside.whitebox.eu/goals/" .. goal .. "/statements?statements_query[start_date]=" .. timeStr
                         local response = HTML(connection:get(url))
 
                 -- Ermittle Kontostand vom KONTO
@@ -184,7 +185,7 @@ function RefreshAccount(account, since)
                 type_text = 'Depotbestand:'
 
                 -- build url
-                        url = "https://www.whitebox.eu/goals/" .. goal .. "/statements?statements_query[start_date]=" .. timeStr
+                        url = "https://inside.whitebox.eu/goals/" .. goal .. "/statements?statements_query[start_date]=" .. timeStr
                         local response = HTML(connection:get(url))
 
                 -- Ermittle Kontostand vom DEPOT
@@ -227,7 +228,7 @@ function RefreshAccount(account, since)
         elseif ( prefix == "PERFORMANCE" ) then
 
                 -- build url
-                        url = "https://www.whitebox.eu/goals/" .. goal .. "/performances"
+                        url = "https://inside.whitebox.eu/goals/" .. goal .. "/performances"
                         local response = HTML(connection:get(url))
 
                         local sniplet = string.match(response:html(),'report":(.+})}')
@@ -283,7 +284,7 @@ function RefreshAccount(account, since)
         elseif ( prefix == "PORTFOLIO" ) then
 
                 -- build url
-                        url = "https://www.whitebox.eu/goals/" .. goal .. "/portfolio"
+                        url = "https://inside.whitebox.eu/goals/" .. goal .. "/portfolio"
                         local response = HTML(connection:get(url))
                         --print (response:html())
 
@@ -388,7 +389,7 @@ end
 -- Tricky, geht nur als POST
 
 function EndSession ()
-        url = "https://www.whitebox.eu/logout"
+        url = "https://inside.whitebox.eu/logout"
         local content, charset, mimeType = connection:post(url ,"_method=delete")
 end
 
@@ -426,4 +427,4 @@ function round2(num, numDecimalPlaces)
   return tonumber(string.format("%." .. (numDecimalPlaces or 0) .. "f", num))
 end
 
--- SIGNATURE: MCwCFGpu9yD6uAMjV2xOaEraY19VXy1AAhQqaRK8qMOIWChlsW6BKIeVXci3QQ==
+-- SIGNATURE: MCsCE1lbmtEydC6NVeKsLBGBDU+8hE8CFDov36ewTihISzCYybb6HLZEA5W0
