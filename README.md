@@ -15,7 +15,7 @@ Es macht keinen Sinn DEPOT und PORTFOLIO zu haben. Sie sind 2 Darstellungen des 
 Kurz:
 - KONTO + DEPOT oder
 - KONTO + PORTFOLIO
-- PERFORMANC optional dazu.
+- PERFORMANCE optional dazu.
 
 ## Tipp: 
 Zusammen als **Kontogruppe** mit *"Kontostand in Saldenleiste anzeigen"* zusammenfassen, dann hat man den Gesamtwert des Ziels 
