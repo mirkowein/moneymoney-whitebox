@@ -21,3 +21,6 @@ Kurz:
 Zusammen als **Kontogruppe** mit *"Kontostand in Saldenleiste anzeigen"* zusammenfassen, dann hat man den Gesamtwert des Ziels 
 ![MoneyMoney screenshot Kontosaldo](Screenshots/Kontosaldo.png)
 ![MoneyMoney screenshot Kontogruppe](Screenshots/Kontogruppe.png)
+
+## Spenden
+Weil ich gefragt wurde: https://paypal.me/pools/c/8qnRn6AcLK
