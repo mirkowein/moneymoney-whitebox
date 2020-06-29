@@ -39,9 +39,11 @@
 -- 1.03                        Fix for Login
 -- 1.04                        New performance account for displaying Whitebox performance
 -- 1.05                        New portfolio account. You may have to choose from DEPOT or PORTFOLIO.
+-- 1.06                        Fix for new subdomain inside.whitebox.eu
+-- 1.07                        Fix for new design
 
-WebBanking{version     = 1.06,
-           url         = "https://www.whitebox.eu/sessions/new",
+WebBanking{version     = 1.07,
+           url         = "https://inside.whitebox.eu",
            services    = {"Whitebox"},
            description = "Whitebox"}
 
@@ -52,7 +54,7 @@ end
 local connection = nil
 local loginresponse = nil
 local connection = Connection()
-
+local debug = false
 
 --------------------------------------------------------------------------------------------------------------------------
 -- Session
@@ -143,213 +145,428 @@ function RefreshAccount(account, since)
         local prefix, goal = string.match(account.accountNumber , "^(.+)_(.+)$")
 
         -- Seit wann als Text DD.MM.YYYY
-        local timeStr = os.date('%d.%m.%Y', since)
+        local timeStrStart = os.date('%d.%m.%Y', since)
+        local timeStrEnd = os.date('%d.%m.%Y', MM.time())
 
-        -- Typ KONTO liefert Tabelle mit 3 Spalten
+        if debug then
+                        print("timeStrStart:", timeStrStart)
+                        print("timeStrEnd:", timeStrEnd)
+                end
+
+        -- Typ KONTO
         if ( prefix == "KONTO" ) then
-                type_text = 'Kontostand:'
+                type_text = 'Kontostand'
 
                 -- build url
-                        url = "https://inside.whitebox.eu/goals/" .. goal .. "/statements?statements_query[start_date]=" .. timeStr
-                        local response = HTML(connection:get(url))
+                                url = "https://inside.whitebox.eu/goals/" .. goal .. "/statements?statements_query[query_class]=account&statements_query[timespan]=none&statements_query[start_date]=" .. timeStrStart .. "&statements_query[end_date]=" .. timeStrEnd
+
+                                -- unbedingt den header setzten, sonst antwortet whitebox mit Fehler
+                                headers={
+                                        ["Accept"]="application/json",
+                                }
+
+                                -- Abfrage starten
+                                local content, charset, mimeType = connection:request("GET",
+                                                                                url,
+                                                                                '',
+                                                                                "application/x-www-form-urlencoded; charset=UTF-8",
+                                                                                headers
+                                                                                )
+
+                                -- whitebox schickt html als json
+                                -- Felder umwandeln
+                                local fields = JSON(content):dictionary()
+
+                                if debug then
+                                        print("Fetched account:", account)
+                                        print("  charset:", charset)
+                                        print("  mimeType:", mimeType)
+                                        print("  fields:", fields.html)
+                                end
+
+                                -- Wie bisher weiter als HTML
+                                -- Gleichzeitig Wandlung von UTF-8 in ISO-8859-1
+                                local response = HTML(MM.toEncoding('ISO-8859-1', fields.html))
+
+
+
+                                -- https://devhints.io/xpath
+                                -- //*/div[@class='data' ]
+                                -- //*/span[@class='big' and contains(text(),"Go")]
+                                -- [contains(text(),"Go")]
+                                -- //*/sup[contains(text(),"Kontostand")]
+                                -- //*/sup[contains(text(),"Kontostand")]/following-sibling::span
 
                 -- Ermittle Kontostand vom KONTO
-                local balance_text = response:xpath("//*/td[@class='gray' and text()='" .. type_text .."']/following-sibling::td"):text()
+                local balance_text = response:xpath("//*/sup[contains(text(),'" .. type_text .. "')]/following-sibling::span"):text()
+
+                if debug then
+                                                        print("balance_text:", balance_text)
+                                end
+
+                                -- Wert aus Text
                 balance = Text2Val ( balance_text)
 
+                                if debug then
+                                                        print("balance_text:", balance_text)
+                                                        print("balance:", balance)
+                                end
+
+                                -- //*/sup[contains(text(),"Kontostand")]/following-sibling::span
+                                -- //*/tbody[@class="table-row-group"]/*/*/div
+                                -- //*/tbody[contains(id(),"account-statement"]/*/*/div
+                                -- //*/tbody[contains(@id, 'account-statement')]/*/*/div
+
+
                 -- Ermittle Transaktionen
-                response:xpath("//*/div[@id='account-statements']/div/table/tbody/tr"):each(
+                response:xpath("//*/tbody[contains(@id, 'account-statement')]"):each(
                         function(index, element)
-                                local Buchtag = element:children():get(1)
-                                local Buchungsinformationen = element:children():get(2)
-                                local Betrag = element:children():get(3)
 
-                                -- Trennen DD.MM.YYYY DD.MM.YYYY
-                                -- Buchungstag Valuta
+                                        -- Valuta ist erstes span im tbody
+                                        local Valuta = element:xpath(".//span"):text()
+                                        -- Buchungsinformation ist erstes div mit class 'data subject'
+                                        local Buchungsinformationen = element:xpath(".//div[@class='data subject']"):text()
+                                                                -- Betrag ist das erste span mit class '*-label'
+                                                                local Betrag = element:xpath(".//span[contains(@class, '-label')]"):text()
+                                                                -- Buchtag bei Whitebox
+                                                                local  Buchtag = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data date']//span"):text()
+                                                                -- TAN bei Whitebox
+                                                                local TAN = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data']//span"):text()
 
-                                local buch1, buch2 = string.match(Buchtag:text() ,'(.+)%s+(.+)')
+                                -- //*/tbody[contains(@id, 'account-statement')]//tr[@class='tr-collapsed']//div[@class='data date']
+                                -- //*/tbody[contains(@id, 'account-statement')]//tr[@class='tr-collapsed']//div[@class='data date']//span
 
+
+                                                                if debug then
+                                                                        print("Valuta:", Valuta)
+                                                                        print("Buchungsinformationen:", Buchungsinformationen)
+                                                                        print("Betrag:", Betrag)
+                                                                        print("Buchtag:", Buchtag)
+                                                                        print("TAN:", TAN)
+                                                                end
+
+
+                                                                -- Tabelle der Transaktionen füllen
                                 table.insert(transactions,
-                                        {
-                                                bookingDate = DateStr2Timestamp( buch1 ),
-                                                valueDate = DateStr2Timestamp( buch2 ),
-                                                purpose = Buchungsinformationen:text(),
-                                                amount = Text2Val ( Betrag:text() )
-                                        }
-                                )
+                                       {
+                                               bookingDate = DateStr2Timestamp( Buchtag ),
+                                               valueDate = DateStr2Timestamp( Valuta ),
+                                               purpose = Buchungsinformationen .. " " .. TAN,
+                                               amount = Text2Val ( Betrag )
+--                                                                                          transactionCode = TAN
+                                       }
+                               )
                         end
                 )
 
-        -- Typ DEPOT liefert Tabelle mit 6 Spalten
+        -- Typ DEPOT
         elseif ( prefix == "DEPOT" ) then
-                type_text = 'Depotbestand:'
+                type_text = 'Depotbestand'
 
                 -- build url
-                        url = "https://inside.whitebox.eu/goals/" .. goal .. "/statements?statements_query[start_date]=" .. timeStr
-                        local response = HTML(connection:get(url))
+                                url = "https://inside.whitebox.eu/goals/" .. goal .. "/statements?statements_query[query_class]=account&statements_query[timespan]=none&statements_query[start_date]=" .. timeStrStart .. "&statements_query[end_date]=" .. timeStrEnd
+
+                                -- unbedingt den header setzten, sonst antwortet whitebox mit Fehler
+                                headers={
+                                        ["Accept"]="application/json",
+                                }
+
+                                -- Abfrage starten
+                                local content, charset, mimeType = connection:request("GET",
+                                                                                url,
+                                                                                '',
+                                                                                "application/x-www-form-urlencoded; charset=UTF-8",
+                                                                                headers
+                                                                                )
+
+                                -- whitebox schickt html als json
+                                -- Felder umwandeln
+                                local fields = JSON(content):dictionary()
+
+                                if debug then
+                                        print("Fetched account:", account)
+                                        print("  charset:", charset)
+                                        print("  mimeType:", mimeType)
+                                        print("  fields:", fields.html)
+                                end
+
+                                -- Wie bisher weiter als HTML
+                                -- Gleichzeitig Wandlung von UTF-8 in ISO-8859-1
+                                local response = HTML(MM.toEncoding('ISO-8859-1', fields.html))
 
                 -- Ermittle Kontostand vom DEPOT
-                local balance_text = response:xpath("//*/td[@class='gray' and text()='" .. type_text .."']/following-sibling::td"):text()
+                local balance_text = response:xpath("//*/sup[contains(text(),'" .. type_text .. "')]/following-sibling::span"):text()
+
+                if debug then
+                                                        print("balance_text:", balance_text)
+                                end
+
+                                -- Wert aus Text
                 balance = Text2Val ( balance_text)
 
-                response:xpath("//*/div[@id='depot-statements']/div/table/tbody/tr"):each(
+                                if debug then
+                                                        print("balance_text:", balance_text)
+                                                        print("balance:", balance)
+                                end
+
+
+                -- Ermittle Transaktionen
+                response:xpath("//*/tbody[contains(@id, 'depot-statement')]"):each(
                         function(index, element)
-                                local Buchtag = element:children():get(1)
-                                local Buchungsinformationen = element:children():get(2)
-                                local Assetklasse = element:children():get(3)
-                                local Produktbezeichnung = element:children():get(4)
-                                local Anteile = element:children():get(5)
-                                local Wert = element:children():get(6)
+                                -- Immer //*/tbody[contains(@id, 'depot-statement')]    + unten ohne führenden .
+                                -- bspw. //*/tbody[contains(@id, 'depot-statement')]//tr[@class='tr-collapsed']//div[@class='data date']//span
 
-                                -- Beträge aufbereiten
-                                -- . löschen
-                                Wert = string.gsub(Wert:text(), "%.", "")
+                                -- Valuta ist erstes span im tbody
+                                        local Valuta = element:xpath(".//span"):text()
+                                        -- Buchungsinformation ist erstes div mit class 'data subject'
+                                        local Buchungsinformationen = element:xpath(".//div[@class='data subject']"):text()
+                                                                -- Betrag ist das erste span mit class '*-label'
+                                                                local Wert = element:xpath(".//span[contains(@class, '-label')]"):text()
+                                                                -- Buchtag bei Whitebox
+                                                                local  Buchtag = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data date']//span"):text()
+                                                                -- Assetklasse
+                                                                local Assetklasse = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data date-spacing']//span"):text()
+                                                                -- Produktbezeichnung
+                                                                local Produktbezeichnung = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data']//span"):text()
+                                                                -- Anteile
+                                                                local Anteile = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data text-right']//span"):text()
+                                                                -- Kurs
+                                                                local Kurs         = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data text-right']//span[3]"):text()
+                                                                -- ISIN
+                                                                local ISIN = element:xpath(".//tr[@class='tr-collapsed']//div[2][@class='data text-right']//span"):text()
+                                                                -- TAN
+                                                                local TAN         = element:xpath(".//tr[@class='tr-collapsed']//div[2][@class='data text-right']//span[3]"):text()
 
-                                -- Trennen von Betrag und Währung
+                                                                 -- Trennen von Betrag und Währung
                                 local Betrag, Waehrung = string.match(Wert, '(-?%d+,?%d+)%s*(%w+)' )
 
-                                -- Trennen DD.MM.YYYY DD.MM.YYYY
-                                -- Buchungstag Valuta
+                                                                if debug then
+                                                                        print("Valuta:", Valuta)
+                                                                        print("Buchungsinformationen:", Buchungsinformationen)
+                                                                        print("Betrag:", Betrag)
+                                                                        print("Waehrung:", Waehrung)
+                                                                        print("Buchtag:", Buchtag)
+                                                                        print("Assetklasse:", Assetklasse)
+                                                                        print("Produktbezeichnung:", Produktbezeichnung        )
+                                                                        print("Anteile:", Anteile)
+                                                                        print("Kurs:", Kurs)
+                                                                        print("ISIN:", ISIN)
+                                                                        print("TAN:", TAN)
+                                                                end
 
-                                local buch1, buch2 = string.match(Buchtag:text() ,'(.+)%s+(.+)')
-
-                                table.insert(transactions,
-                                        {
-                                                bookingDate = DateStr2Timestamp( buch1 ),
-                                                valueDate = DateStr2Timestamp( buch2 ),
-                                                purpose = Buchungsinformationen:text() .. "\n" .. Assetklasse:text() .. "\n" .. Produktbezeichnung:text() .. "\n" .. Anteile:text() ,
-                                                amount = Text2Val ( Betrag ),
-                                                currency = Waehrung
-                                        }
-                                )
+                                    table.insert(transactions,
+                                       {
+                                               bookingDate = DateStr2Timestamp( Buchtag         ),
+                                               valueDate = DateStr2Timestamp( Valuta ),
+                                               purpose = Buchungsinformationen .. "\n" .. Assetklasse .. "\n" .. Produktbezeichnung .. "\nAnteile " .. Anteile .. " Kurs " .. Kurs .. "\nISIN " .. ISIN .. " TAN " .. TAN,
+                                               amount = Text2Val ( Betrag ),
+                                               currency = Waehrung
+                                       }
+                               )
                         end
                 )
         -- Typ PERFORMANCE liefert JSON, wir werten nur 4 aus, weitere möglich
         elseif ( prefix == "PERFORMANCE" ) then
 
                 -- build url
-                        url = "https://inside.whitebox.eu/goals/" .. goal .. "/performances"
-                        local response = HTML(connection:get(url))
+                url = "https://inside.whitebox.eu/goals/" .. goal .. "/performances?from=&to=&with_whitebox_fees=true&with_taxes=true"
 
-                        local sniplet = string.match(response:html(),'report":(.+})}')
-                        --print (sniplet)
-                        local json = JSON(sniplet):dictionary()
-                        --print (dump (json))
+                                -- unbedingt den header setzten, sonst antwortet whitebox mit Fehler
+                                headers={
+                                        ["Accept"]="application/json",
+                                }
+
+                                -- Abfrage starten
+                                local content, charset, mimeType = connection:request("GET",
+                                                                                url,
+                                                                                '',
+                                                                                "application/x-www-form-urlencoded; charset=UTF-8",
+                                                                                headers
+                                                                                )
+
+                                -- whitebox schickt html als json
+                                -- Felder umwandeln
+                                local fields = JSON(content):dictionary()
+
+                                if debug then
+                                        print("Fetched account:", account)
+                                        print("  charset:", charset)
+                                        print("  mimeType:", mimeType)
+                                        print("  fields:", fields.report)
+                                end
+
+
 
                                 table.insert(transactions,
-                                                {
-                                                                name = "Vermögensstand: " .. string.format("%.2f", json["end_assets"]) .. " €",
-                                                                market = "Whitebox",
-                                                                isin = "Performance end_assets",
-                                                                currency = "EUR",
-                                                                tradeTimestamp = os.time(),
-                                                                currencyOfPrice = "EUR",
-                                                                currencyOfPurchasePrice = "EUR"
-                                                }
+                                                                {
+                                                                                                name = "Vermögensstand: " .. string.format("%.2f", fields.report["end_assets"]) .. " €",
+                                                                                                market = "Whitebox",
+                                                                                                isin = "Performance end_assets",
+                                                                                                currency = "EUR",
+                                                                                                tradeTimestamp = os.time(),
+                                                                                                currencyOfPrice = "EUR",
+                                                                                                currencyOfPurchasePrice = "EUR"
+                                                                }
                                 )
                                 table.insert(transactions,
-                                                {
-                                                                name = "Geldgewichtete Rendite: " .. round2(json["mwr"]*100,2) .. " %",
-                                                                market = "Whitebox",
-                                                                isin = "Performance mwr",
-                                                                tradeTimestamp = os.time(),
-                                                                currencyOfPurchasePrice = "EUR"
-                                                }
+                                                                {
+                                                                                                name = "Geldgewichtete Rendite: " .. round2(fields.report["mwr"]*100,2) .. " %",
+                                                                                                market = "Whitebox",
+                                                                                                isin = "Performance mwr",
+                                                                                                tradeTimestamp = os.time(),
+                                                                                                currencyOfPurchasePrice = "EUR"
+                                                                }
                                 )
                                 table.insert(transactions,
-                                                {
-                                                                name = "Geldgewichtete Rendite annualisiert: " .. round2(json["yearly_mwr"]*100,2) .. " %",
-                                                                market = "Whitebox",
-                                                                isin = "Performance yearly_mwr",
-                                                                tradeTimestamp = os.time(),
-                                                                currencyOfPurchasePrice = "EUR"
-                                                }
+                                                                {
+                                                                                                name = "Geldgewichtete Rendite annualisiert: " .. round2(fields.report["yearly_mwr"]*100,2) .. " %",
+                                                                                                market = "Whitebox",
+                                                                                                isin = "Performance yearly_mwr",
+                                                                                                tradeTimestamp = os.time(),
+                                                                                                currencyOfPurchasePrice = "EUR"
+                                                                }
                                 )
                                 table.insert(transactions,
-                                                {
-                                                                name = "Erfolgsrelevante Kapitalveränderungen: " ..  string.format("%.2f", json["sum_of_erfolgsrelevante_kapitalveraenderungen"]) .. " €",
-                                                                market = "Whitebox",
-                                                                isin = "Performance sum_of_erfolgsrelevante_kapitalveraenderungen",
-                                                                tradeTimestamp = os.time(),
-                                                                currencyOfPurchasePrice = "EUR"
-                                                }
+                                                                {
+                                                                                                name = "Erfolgsrelevante Kapitalveränderungen: " ..  string.format("%.2f", fields.report["sum_of_erfolgsrelevante_kapitalveraenderungen"]) .. " €",
+                                                                                                market = "Whitebox",
+                                                                                                isin = "Performance sum_of_erfolgsrelevante_kapitalveraenderungen",
+                                                                                                tradeTimestamp = os.time(),
+                                                                                                currencyOfPurchasePrice = "EUR"
+                                                                }
                                 )
 
 
                 --end
 
-                        return {securities = transactions}
+                return {securities = transactions}
 
         -- Typ PORTFOLIO
         elseif ( prefix == "PORTFOLIO" ) then
 
                 -- build url
-                        url = "https://inside.whitebox.eu/goals/" .. goal .. "/portfolio"
-                        local response = HTML(connection:get(url))
-                        --print (response:html())
+                                        url = "https://inside.whitebox.eu/goals/" .. goal .. "/portfolio"
 
-                                 response:xpath("//*/tr[contains(@id, 'portfolio_row_')]"):each(
-                        function(index, element)
---                                print("------------------")
---                                print(index)
+                                -- unbedingt den header setzten, sonst antwortet whitebox mit Fehler
+                                headers={
+                                        ["Accept"]="application/json",
+                                }
 
---                                print( "1=" .. element:children():get(1):text() )
---                                print( "1 1=" .. element:children():get(1):children():get(1):text() )
---                                print( "2=" .. element:children():get(2):text())
---                                print( "2 1=" .. element:children():get(2):children():get(1):text() )
---                                print( "3=" .. element:children():get(3):text())
---                                print( "3 1=" .. element:children():get(3):children():get(1):text() )
---                                print( "4=" .. element:children():get(4):text())
---                                print( "4 1=" .. element:children():get(4):children():get(1):text() )
---                                print( "5=" .. element:children():get(5):text())
---                                print( "5 1=" .. element:children():get(5):children():get(1):text() )
---                                print( "6=" .. element:children():get(6):text())
---                                print( "6 1=" .. element:children():get(6):children():get(1):text() )
+                                -- Abfrage starten
+                                local content, charset, mimeType = connection:request("GET",
+                                                                                url,
+                                                                                '',
+                                                                                "application/x-www-form-urlencoded; charset=UTF-8",
+                                                                                headers
+                                                                                )
 
-                                                        local Name                                         = element:children():get(1):children():get(1):text()
-                                                        local Anteile                                 = first_split_string( element:children():get(2):text() )
-                                                        local ISIN                                         = element:children():get(2):children():get(1):text()
-                                                        local Aktueller_Kurs                 = first_split_string( element:children():get(3):text() )
-                                                        local Einstand_Kurs                        = element:children():get(3):children():get(1):text()
-                                                        local Einstand_Wert                        = element:children():get(4):text()
-                                                        local Akt_Wert                                 = first_split_string( element:children():get(5):text() )
+                                -- whitebox schickt html als json
+                                -- Felder umwandeln
+                                local fields = JSON(content):dictionary()
 
---                                                        print ("Name=" .. Name)
---                                                        print ("Anteile=" .. Anteile )
---                                                        print ("ISIN=" .. ISIN )
---                                                        print ("Aktueller_Kurs=" .. Aktueller_Kurs)
---                                                        print ("Einstand_Kurs=" .. Einstand_Kurs)
---                                                        print ("Einstand_Wert=" .. Einstand_Wert)
---                                                        print ("Akt_Wert=" .. Akt_Wert)
+                                if debug then
+                                        print("Fetched account:", account)
+                                        print("  charset:", charset)
+                                        print("  mimeType:", mimeType)
+                                        print("  fields:", fields.html)
+                                end
 
-                                                        table.insert(transactions,
-                                                        {
+                                -- Wie bisher weiter als HTML
+                                -- Gleichzeitig Wandlung von UTF-8 in ISO-8859-1
+                                local response = HTML(MM.toEncoding('ISO-8859-1', fields.html))
+
+                                local Name
+                                local ISIN
+                                local Einstand_Wert
+                                local Anteile
+
+
+                        -- Ermittle Transaktionen
+                        -- class="table depot-table"
+                                response:xpath("//*/table[contains(@class, 'depot-table')]//tbody//tr"):each(
+                                function(index, element)
+
+
+                                        -- nur jedes 2. tr ist ein eigenes security. Es gehören immer 2 tr zusammen
+                                        if (index % 2 == 1) then
+                                                if debug then
+                                                                                print("1. tr:")
+                                                end
+                                                -- Name
+                                                Name = element:xpath(".//div[@class='dropdown']//li[1]//p"):text()
+                                                -- ISIN
+                                                ISIN = element:xpath(".//div[@class='dropdown']//li[3]//p"):text()
+                                                -- Einstand_Kurs
+                                                Einstand_Wert = element:xpath(".//div[@class='dropdown']//li[4]//p"):text()
+                                                -- Anteile
+                                                Anteile = element:xpath(".//div[@class='dropdown']//li[5]//p"):text()
+
+                                                if debug then
+                                                        print("  Name:", Name)
+                                                        print("  ISIN:", ISIN)
+                                                        print("  Einstand_Wert:", Einstand_Wert)
+                                                        print("  Anteile:", Anteile)
+                                                                        end
+                                        else
+                                                if debug then
+                                                                                print("2. tr:")
+                                                end
+                                                -- Aktueller_Kurs
+                                                local Aktueller_Kurs = element:xpath(".//div[@class='table-data']//span[1]"):text()
+                                                -- Einstand_Kurs
+                                                local Einstand_Kurs = element:xpath(".//div[@class='table-data']//span[3]"):text()
+
+                                                        -- anderer div
+                                                -- Aktueller_Kurs
+                                                local Akt_Wert = element:xpath(".//div[@class='data text-right m-text-left']//span[1]"):text()
+                                                -- Einstand_Kurs
+                                                local Anteil_Portfolio = element:xpath(".//div[@class='data text-right m-text-left']//span[3]"):text()
+                                                                        if debug then
+                                                        print("  Name:", Name)
+                                                        print("  ISIN:", ISIN)
+                                                        print("  Einstand_Wert:", Einstand_Wert)
+                                                        print("  Anteile:", Anteile)
+                                                                        end
+
+                                                if debug then
+                                                        print("  Aktueller_Kurs:", Aktueller_Kurs)
+                                                        print("  Einstand_Kurs:", Einstand_Kurs)
+                                                        print("  Akt_Wert:", Akt_Wert)
+                                                        print("  Anteil_Portfolio:", Anteil_Portfolio)
+                                                                        end
+
+
+
+                                                                        table.insert(transactions,
+                                                                        {
 
 --                                                                String name: Bezeichnung des Wertpapiers
-                                                                name = Name,
+                                                                                  name = Name,
 --                                                                String isin: ISIN
-                                                                isin = ISIN,
+                                                                                  isin = ISIN,
 --                                                                String securityNumber: WKN
 --                                                                String market: Börse
 --                                                                String currency: Währung bei Nominalbetrag oder nil bei Stückzahl
 --                                                                Number quantity: Nominalbetrag oder Stückzahl
-                                                                quantity = tonumber(Text2Val(Anteile)),
+                                                                                  quantity = tonumber(Text2Val(Anteile)),
 --                                                                Number amount: Wert der Depotposition in Kontowährung
-                                                                amount = tonumber(Text2Val(Akt_Wert)),
+                                                                                  amount = tonumber(Text2Val(Akt_Wert)),
 --                                                                Number originalCurrencyAmount: Wert der Depotposition in Originalwährung
 --                                                                String currencyOfOriginalAmount: Originalwährung
 --                                                                Number exchangeRate: Wechselkurs
 --                                                                Number tradeTimestamp: Notierungszeitpunkt; Die Angabe erfolgt in Form eines POSIX-Zeitstempels.
-                                                                tradeTimestamp = os.time(),
+                                                                                  tradeTimestamp = os.time(),
 --                                                                Number price: Aktueller Preis oder Kurs
-                                                                price = tonumber(Text2Val(Aktueller_Kurs)),
+                                                                                  price = tonumber(Text2Val(Aktueller_Kurs)),
 --                                                                String currencyOfPrice: Von der Kontowährung abweichende Währung des Preises
 --                                                                Number purchasePrice: Kaufpreis oder Kaufkurs
-                                                                purchasePrice = tonumber(Text2Val(Einstand_Kurs))
+                                                                                  purchasePrice = tonumber(Text2Val(Einstand_Kurs))
 --                                                                String currencyOfPurchasePrice: Von der Kontowährung abweichende Währung des Kaufpreises
 
-                                })
-                                end
+                                                                         })
+                                                                end
+
+                                    end
                 )
 
                         return {securities = transactions}
@@ -362,6 +579,7 @@ end
 -- 2 Fälle: € 3.126,18  und  2.12,12 EUR
 
 function Text2Val ( text )
+        text = string.gsub(text, "â‚¬", "")
         text = string.gsub(text, "€ +", "")
         text = string.gsub(text, "EUR", "")
     text = string.gsub(text, "%.", "")
@@ -427,4 +645,4 @@ function round2(num, numDecimalPlaces)
   return tonumber(string.format("%." .. (numDecimalPlaces or 0) .. "f", num))
 end
 
--- SIGNATURE: MCsCE1lbmtEydC6NVeKsLBGBDU+8hE8CFDov36ewTihISzCYybb6HLZEA5W0
+-- SIGNATURE: MCwCFEWL+TOF6YkrQ8x/kU/cQDWM9EWyAhR22pI5IRm6x7oSgC0MOU9gJuzQXg==
