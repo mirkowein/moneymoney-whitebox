@@ -41,8 +41,9 @@
 -- 1.05                        New portfolio account. You may have to choose from DEPOT or PORTFOLIO.
 -- 1.06                        Fix for new subdomain inside.whitebox.eu
 -- 1.07                        Fix for new design
+-- 1.08                        Fix for new portfolio design
 
-WebBanking{version     = 1.07,
+WebBanking{version     = 1.08,
            url         = "https://inside.whitebox.eu",
            services    = {"Whitebox"},
            description = "Whitebox"}
@@ -493,13 +494,13 @@ function RefreshAccount(account, since)
                                                                                 print("1. tr:")
                                                 end
                                                 -- Name
-                                                Name = element:xpath(".//div[@class='dropdown']//li[1]//p"):text()
+                                                Name = element:xpath(".//ul[@class='dropdown-menu dropdown-menu--dark']//li[1]//p"):text()
                                                 -- ISIN
-                                                ISIN = element:xpath(".//div[@class='dropdown']//li[3]//p"):text()
+                                                ISIN = element:xpath(".//ul[@class='dropdown-menu dropdown-menu--dark']//li[3]//p"):text()
                                                 -- Einstand_Kurs
-                                                Einstand_Wert = element:xpath(".//div[@class='dropdown']//li[4]//p"):text()
+                                                Einstand_Wert = element:xpath(".//ul[@class='dropdown-menu dropdown-menu--dark']//li[4]//p"):text()
                                                 -- Anteile
-                                                Anteile = element:xpath(".//div[@class='dropdown']//li[5]//p"):text()
+                                                Anteile = element:xpath(".//ul[@class='dropdown-menu dropdown-menu--dark']//li[5]//p"):text()
 
                                                 if debug then
                                                         print("  Name:", Name)
@@ -645,4 +646,4 @@ function round2(num, numDecimalPlaces)
   return tonumber(string.format("%." .. (numDecimalPlaces or 0) .. "f", num))
 end
 
--- SIGNATURE: MCwCFEWL+TOF6YkrQ8x/kU/cQDWM9EWyAhR22pI5IRm6x7oSgC0MOU9gJuzQXg==
+-- SIGNATURE: MC0CFQCNAz6UySvxtA81gAUKe/HJx0DAwQIUWFfZlP2Ja2IZiQ3PHmYw8Xufjm4=
