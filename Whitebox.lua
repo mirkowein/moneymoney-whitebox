@@ -68,7 +68,7 @@ function InitializeSession (protocol, bankCode, username, username2, password, u
 
     response:xpath("//input[@name='session[email]']"):attr("value", username)
     response:xpath("//input[@name='session[password]']"):attr("value", password)
-    loginresponse = HTML(connection:request(response:xpath("//*[@id='new_session']/*/button"):click()))
+    loginresponse = HTML(connection:request(response:xpath("//button[@id='login-btn']"):click()))
 
     if (loginresponse:xpath("//*[@class='msg msg-large msg-error']"):text() == "Keine gültigen Zugangsdaten.") then
         return LoginFailed
