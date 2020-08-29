@@ -42,8 +42,9 @@
 -- 1.06                        Fix for new subdomain inside.whitebox.eu
 -- 1.07                        Fix for new design
 -- 1.08                        Fix for new portfolio design
+-- 1.09                        Fix for Login
 
-WebBanking{version     = 1.08,
+WebBanking{version     = 1.09,
            url         = "https://inside.whitebox.eu",
            services    = {"Whitebox"},
            description = "Whitebox"}
@@ -68,7 +69,7 @@ function InitializeSession (protocol, bankCode, username, username2, password, u
 
     response:xpath("//input[@name='session[email]']"):attr("value", username)
     response:xpath("//input[@name='session[password]']"):attr("value", password)
-    loginresponse = HTML(connection:request(response:xpath("//button[@id='login-btn']"):click()))
+        loginresponse = HTML(connection:request(response:xpath("//*[@id='login-btn']"):click()))
 
     if (loginresponse:xpath("//*[@class='msg msg-large msg-error']"):text() == "Keine gültigen Zugangsdaten.") then
         return LoginFailed
@@ -646,4 +647,4 @@ function round2(num, numDecimalPlaces)
   return tonumber(string.format("%." .. (numDecimalPlaces or 0) .. "f", num))
 end
 
--- SIGNATURE: MC0CFQCNAz6UySvxtA81gAUKe/HJx0DAwQIUWFfZlP2Ja2IZiQ3PHmYw8Xufjm4=
+-- SIGNATURE: MC0CFQCLbzWUxO3AFxOZuUqO64KKxwi8QwIUeXhAdyfz7eblKJdij8DiHMKq4a8=
