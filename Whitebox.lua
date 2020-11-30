@@ -73,20 +73,20 @@ function InitializeSession (protocol, bankCode, username, username2, password, u
     response:xpath("//input[@name='session[password]']"):attr("value", password)
     loginresponse = HTML(connection:request(response:xpath("//*[@id='login-btn']"):click()))
     if debug then
-		print("Extract sub url")
+                print("Extract sub url")
     end
     -- https://inside.whitebox.eu/w/8d667b52-c8ec-48ce-9b0a-0e680a7123f5/goals
     sub_url = string.match(connection:getBaseURL() , "whitebox.eu/(.+)goals")
-    
+
     -- should now be w/8d667b52-c8ec-48ce-9b0a-0e680a7123f5/
     if debug then
-    	print ("sub_url=", sub_url)	
-	end
+            print ("sub_url=", sub_url)
+        end
     if (loginresponse:xpath("//*[@class='msg msg-large msg-error']"):text() == "Keine gültigen Zugangsdaten.") then
         return LoginFailed
     end
     if debug then
-		print("End InitializeSession")
+                print("End InitializeSession")
     end
 end
 
@@ -174,7 +174,7 @@ function RefreshAccount(account, since)
                 type_text = 'Kontostand'
 
                 -- build url
-                -- https://inside.whitebox.eu/w/8d667b52-c8ec-48ce-9b0a-0e680a7123f5/goals/sparen-2024/statements	
+                -- https://inside.whitebox.eu/w/8d667b52-c8ec-48ce-9b0a-0e680a7123f5/goals/sparen-2024/statements
                                 url = "https://inside.whitebox.eu/" .. sub_url .. "goals/" .. goal .. "/statements?statements_query[query_class]=account&statements_query[timespan]=none&statements_query[start_date]=" .. timeStrStart .. "&statements_query[end_date]=" .. timeStrEnd
 
                                 -- unbedingt den header setzten, sonst antwortet whitebox mit Fehler
@@ -662,4 +662,4 @@ function round2(num, numDecimalPlaces)
   return tonumber(string.format("%." .. (numDecimalPlaces or 0) .. "f", num))
 end
 
--- SIGNATURE: MC0CFQCLbzWUxO3AFxOZuUqO64KKxwi8QwIUeXhAdyfz7eblKJdij8DiHMKq4a8=
+-- SIGNATURE: MCwCFC6t8WCdrxGYVUank/SI6P/4c6tAAhRr368Pi70bdmtub3TtMxbYmjG1WQ==
