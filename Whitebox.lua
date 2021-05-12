@@ -485,7 +485,6 @@ function RefreshAccount(account, since)
                                         print("Fetched account:", account)
                                         print("  charset:", charset)
                                         print("  mimeType:", mimeType)
-                                        print("  fields:", fields.html)
                                 end
                       
                                  for k, v in pairs(fields.active_portfolio.table_data) do
