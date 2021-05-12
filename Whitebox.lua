@@ -487,104 +487,20 @@ function RefreshAccount(account, since)
                                         print("  mimeType:", mimeType)
                                         print("  fields:", fields.html)
                                 end
+                      
+                                 for k, v in pairs(fields.active_portfolio.table_data) do
+                                            table.insert(transactions,
+                                            {
+                                                       name = v.fund_name .. " (" .. v.class_name .. ")",
+                                                       isin = v.isin,
+                                                       quantity = v.paper_quantity,
+                                                       amount = v.rating_value,
+                                                       tradeTimestamp = os.time(),
+                                                       price = v.rating_price,
+                                                       purchasePrice = v.buying_price
 
-                                -- Wie bisher weiter als HTML
-                                -- Gleichzeitig Wandlung von UTF-8 in ISO-8859-1
-                                local response = HTML(MM.toEncoding('ISO-8859-1', fields.html))
-
-                                local Name
-                                local ISIN
-                                local Einstand_Wert
-                                local Anteile
-
-
-                        -- Ermittle Transaktionen
-                        -- class="table depot-table"
-                                response:xpath("//*/table[contains(@class, 'depot-table')]//tbody//tr"):each(
-                                function(index, element)
-
-
-                                        -- nur jedes 2. tr ist ein eigenes security. Es gehören immer 2 tr zusammen
-                                        if (index % 2 == 1) then
-                                                if debug then
-                                                                                print("1. tr:")
-                                                end
-                                                -- Name
-                                                Name = element:xpath(".//ul[@class='dropdown-menu dropdown-menu--dark']//li[1]//p"):text()
-                                                -- ISIN
-                                                ISIN = element:xpath(".//ul[@class='dropdown-menu dropdown-menu--dark']//li[3]//p"):text()
-                                                -- Einstand_Kurs
-                                                Einstand_Wert = element:xpath(".//ul[@class='dropdown-menu dropdown-menu--dark']//li[4]//p"):text()
-                                                -- Anteile
-                                                Anteile = element:xpath(".//ul[@class='dropdown-menu dropdown-menu--dark']//li[5]//p"):text()
-
-                                                if debug then
-                                                        print("  Name:", Name)
-                                                        print("  ISIN:", ISIN)
-                                                        print("  Einstand_Wert:", Einstand_Wert)
-                                                        print("  Anteile:", Anteile)
-                                                                        end
-                                        else
-                                                if debug then
-                                                                                print("2. tr:")
-                                                end
-                                                -- Aktueller_Kurs
-                                                local Aktueller_Kurs = element:xpath(".//div[@class='table-data']//span[1]"):text()
-                                                -- Einstand_Kurs
-                                                local Einstand_Kurs = element:xpath(".//div[@class='table-data']//span[3]"):text()
-
-                                                        -- anderer div
-                                                -- Aktueller_Kurs
-                                                local Akt_Wert = element:xpath(".//div[@class='data text-right m-text-left']//span[1]"):text()
-                                                -- Einstand_Kurs
-                                                local Anteil_Portfolio = element:xpath(".//div[@class='data text-right m-text-left']//span[3]"):text()
-                                                                        if debug then
-                                                        print("  Name:", Name)
-                                                        print("  ISIN:", ISIN)
-                                                        print("  Einstand_Wert:", Einstand_Wert)
-                                                        print("  Anteile:", Anteile)
-                                                                        end
-
-                                                if debug then
-                                                        print("  Aktueller_Kurs:", Aktueller_Kurs)
-                                                        print("  Einstand_Kurs:", Einstand_Kurs)
-                                                        print("  Akt_Wert:", Akt_Wert)
-                                                        print("  Anteil_Portfolio:", Anteil_Portfolio)
-                                                                        end
-
-
-
-                                                                        table.insert(transactions,
-                                                                        {
-
---                                                                String name: Bezeichnung des Wertpapiers
-                                                                                  name = Name,
---                                                                String isin: ISIN
-                                                                                  isin = ISIN,
---                                                                String securityNumber: WKN
---                                                                String market: Börse
---                                                                String currency: Währung bei Nominalbetrag oder nil bei Stückzahl
---                                                                Number quantity: Nominalbetrag oder Stückzahl
-                                                                                  quantity = tonumber(Text2Val(Anteile)),
---                                                                Number amount: Wert der Depotposition in Kontowährung
-                                                                                  amount = tonumber(Text2Val(Akt_Wert)),
---                                                                Number originalCurrencyAmount: Wert der Depotposition in Originalwährung
---                                                                String currencyOfOriginalAmount: Originalwährung
---                                                                Number exchangeRate: Wechselkurs
---                                                                Number tradeTimestamp: Notierungszeitpunkt; Die Angabe erfolgt in Form eines POSIX-Zeitstempels.
-                                                                                  tradeTimestamp = os.time(),
---                                                                Number price: Aktueller Preis oder Kurs
-                                                                                  price = tonumber(Text2Val(Aktueller_Kurs)),
---                                                                String currencyOfPrice: Von der Kontowährung abweichende Währung des Preises
---                                                                Number purchasePrice: Kaufpreis oder Kaufkurs
-                                                                                  purchasePrice = tonumber(Text2Val(Einstand_Kurs))
---                                                                String currencyOfPurchasePrice: Von der Kontowährung abweichende Währung des Kaufpreises
-
-                                                                         })
-                                                                end
-
-                                    end
-                )
+                                            })
+                                end
 
                         return {securities = transactions}
         end
