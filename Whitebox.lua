@@ -44,8 +44,9 @@
 -- 1.08                        Fix for new portfolio design
 -- 1.09                        Fix for Login
 -- 1.10                        Fix for new urls
+-- 1.11                        Remove debug on non-existing value; Fix Portfolio Import by https://github.com/calcosta
 
-WebBanking{version     = 1.10,
+WebBanking{version     = 1.11,
            url         = "https://inside.whitebox.eu",
            services    = {"Whitebox"},
            description = "Whitebox"}
@@ -486,7 +487,7 @@ function RefreshAccount(account, since)
                                         print("  charset:", charset)
                                         print("  mimeType:", mimeType)
                                 end
-                      
+
                                  for k, v in pairs(fields.active_portfolio.table_data) do
                                             table.insert(transactions,
                                             {
@@ -577,4 +578,4 @@ function round2(num, numDecimalPlaces)
   return tonumber(string.format("%." .. (numDecimalPlaces or 0) .. "f", num))
 end
 
--- SIGNATURE: MCwCFC6t8WCdrxGYVUank/SI6P/4c6tAAhRr368Pi70bdmtub3TtMxbYmjG1WQ==
+-- SIGNATURE: MCwCFDs3hU4sU5YyFv/ASHSuOEJ7NOQ8AhRXDUeDks7oGhm7xE5f9KVq/fEjxQ==
