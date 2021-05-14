@@ -24,5 +24,5 @@ Zusammen als **Kontogruppe** mit *"Kontostand in Saldenleiste anzeigen"* zusamme
 
 ## Spenden
 Weil ich gefragt wurde: https://paypal.me/pools/c/8qnRn6AcLK
-Spendenstand: 10 EUR 
+Spendenstand: 20 EUR 
 Danke :)
