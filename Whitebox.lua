@@ -45,8 +45,9 @@
 -- 1.09                        Fix for Login
 -- 1.10                        Fix for new urls
 -- 1.11                        Remove debug on non-existing value; Fix Portfolio Import by https://github.com/calcosta
+-- 1.12                        json for KONTO and DEPOT
 
-WebBanking{version     = 1.11,
+WebBanking{version     = 1.12,
            url         = "https://inside.whitebox.eu",
            services    = {"Whitebox"},
            description = "Whitebox"}
@@ -202,80 +203,31 @@ function RefreshAccount(account, since)
                                         print("  fields:", fields.html)
                                 end
 
-                                -- Wie bisher weiter als HTML
-                                -- Gleichzeitig Wandlung von UTF-8 in ISO-8859-1
-                                local response = HTML(MM.toEncoding('ISO-8859-1', fields.html))
-
-
-
-                                -- https://devhints.io/xpath
-                                -- //*/div[@class='data' ]
-                                -- //*/span[@class='big' and contains(text(),"Go")]
-                                -- [contains(text(),"Go")]
-                                -- //*/sup[contains(text(),"Kontostand")]
-                                -- //*/sup[contains(text(),"Kontostand")]/following-sibling::span
-
-                -- Ermittle Kontostand vom KONTO
-                local balance_text = response:xpath("//*/sup[contains(text(),'" .. type_text .. "')]/following-sibling::span"):text()
-
-                if debug then
-                                                        print("balance_text:", balance_text)
-                                end
-
-                                -- Wert aus Text
-                balance = Text2Val ( balance_text)
+                                balance = fields.statements.cash_value
 
                                 if debug then
-                                                        print("balance_text:", balance_text)
-                                                        print("balance:", balance)
+                                        print("balance:", balance)
                                 end
 
-                                -- //*/sup[contains(text(),"Kontostand")]/following-sibling::span
-                                -- //*/tbody[@class="table-row-group"]/*/*/div
-                                -- //*/tbody[contains(id(),"account-statement"]/*/*/div
-                                -- //*/tbody[contains(@id, 'account-statement')]/*/*/div
+                                                                 for k, v in pairs(fields.statements.account_statements) do
+                                            table.insert(transactions,
+                                            {
+                                                    bookingDate = IsoDateStr2Timestamp(v.bookingDate),
+                                                    valueDate = IsoDateStr2Timestamp(v.valuta),
+                                                    purpose = v.paymentPurpose[1] .. " " .. v.paymentPurpose[2] .. " " .. v.taNumber,
+                                                    amount = v.amount.value
 
 
-                -- Ermittle Transaktionen
-                response:xpath("//*/tbody[contains(@id, 'account-statement')]"):each(
-                        function(index, element)
 
-                                        -- Valuta ist erstes span im tbody
-                                        local Valuta = element:xpath(".//span"):text()
-                                        -- Buchungsinformation ist erstes div mit class 'data subject'
-                                        local Buchungsinformationen = element:xpath(".//div[@class='data subject']"):text()
-                                                                -- Betrag ist das erste span mit class '*-label'
-                                                                local Betrag = element:xpath(".//span[contains(@class, '-label')]"):text()
-                                                                -- Buchtag bei Whitebox
-                                                                local  Buchtag = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data date']//span"):text()
-                                                                -- TAN bei Whitebox
-                                                                local TAN = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data']//span"):text()
+                                            })
+                                            if debug then
+                                                                                                   print("bookingDate:", v.bookingDate)
+                                                                                                   print("  valueDate:", v.valuta)
+                                                                                                   print("  purpose:", v.paymentPurpose[1] .. " " .. v.paymentPurpose[2])
+                                                                                                   print("  amount:", v.amount.value)
+                                                                                        end
+                                end
 
-                                -- //*/tbody[contains(@id, 'account-statement')]//tr[@class='tr-collapsed']//div[@class='data date']
-                                -- //*/tbody[contains(@id, 'account-statement')]//tr[@class='tr-collapsed']//div[@class='data date']//span
-
-
-                                                                if debug then
-                                                                        print("Valuta:", Valuta)
-                                                                        print("Buchungsinformationen:", Buchungsinformationen)
-                                                                        print("Betrag:", Betrag)
-                                                                        print("Buchtag:", Buchtag)
-                                                                        print("TAN:", TAN)
-                                                                end
-
-
-                                                                -- Tabelle der Transaktionen füllen
-                                table.insert(transactions,
-                                       {
-                                               bookingDate = DateStr2Timestamp( Buchtag ),
-                                               valueDate = DateStr2Timestamp( Valuta ),
-                                               purpose = Buchungsinformationen .. " " .. TAN,
-                                               amount = Text2Val ( Betrag )
---                                                                                          transactionCode = TAN
-                                       }
-                               )
-                        end
-                )
 
         -- Typ DEPOT
         elseif ( prefix == "DEPOT" ) then
@@ -308,81 +260,32 @@ function RefreshAccount(account, since)
                                         print("  fields:", fields.html)
                                 end
 
-                                -- Wie bisher weiter als HTML
-                                -- Gleichzeitig Wandlung von UTF-8 in ISO-8859-1
-                                local response = HTML(MM.toEncoding('ISO-8859-1', fields.html))
 
-                -- Ermittle Kontostand vom DEPOT
-                local balance_text = response:xpath("//*/sup[contains(text(),'" .. type_text .. "')]/following-sibling::span"):text()
-
-                if debug then
-                                                        print("balance_text:", balance_text)
-                                end
-
-                                -- Wert aus Text
-                balance = Text2Val ( balance_text)
+                                 balance = fields.statements.depot_value
 
                                 if debug then
-                                                        print("balance_text:", balance_text)
-                                                        print("balance:", balance)
+                                        print("balance:", balance)
                                 end
 
+                                                                 for k, v in pairs(fields.statements.depot_statements) do
+                                            table.insert(transactions,
+                                            {
+                                                    bookingDate = IsoDateStr2Timestamp(v.bookingDate),
+                                                    valueDate = IsoDateStr2Timestamp(v.valuta),
+                                                    purpose = v.purposeLine[1] .. "\n" .. v.asset_class .. "\n" .. v.paper.name .. "\nAnteile " .. v.value.value .. " Kurs " .. v.price.value .. "\nISIN " .. v.paper.isin .. " TAN " .. v.taNumber,
+                                                    amount = v.value.value * v.price.value,
+                                                    currency =  v.price.currency
 
-                -- Ermittle Transaktionen
-                response:xpath("//*/tbody[contains(@id, 'depot-statement')]"):each(
-                        function(index, element)
-                                -- Immer //*/tbody[contains(@id, 'depot-statement')]    + unten ohne führenden .
-                                -- bspw. //*/tbody[contains(@id, 'depot-statement')]//tr[@class='tr-collapsed']//div[@class='data date']//span
 
-                                -- Valuta ist erstes span im tbody
-                                        local Valuta = element:xpath(".//span"):text()
-                                        -- Buchungsinformation ist erstes div mit class 'data subject'
-                                        local Buchungsinformationen = element:xpath(".//div[@class='data subject']"):text()
-                                                                -- Betrag ist das erste span mit class '*-label'
-                                                                local Wert = element:xpath(".//span[contains(@class, '-label')]"):text()
-                                                                -- Buchtag bei Whitebox
-                                                                local  Buchtag = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data date']//span"):text()
-                                                                -- Assetklasse
-                                                                local Assetklasse = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data date-spacing']//span"):text()
-                                                                -- Produktbezeichnung
-                                                                local Produktbezeichnung = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data']//span"):text()
-                                                                -- Anteile
-                                                                local Anteile = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data text-right']//span"):text()
-                                                                -- Kurs
-                                                                local Kurs         = element:xpath(".//tr[@class='tr-collapsed']//div[@class='data text-right']//span[3]"):text()
-                                                                -- ISIN
-                                                                local ISIN = element:xpath(".//tr[@class='tr-collapsed']//div[2][@class='data text-right']//span"):text()
-                                                                -- TAN
-                                                                local TAN         = element:xpath(".//tr[@class='tr-collapsed']//div[2][@class='data text-right']//span[3]"):text()
+                                            })
+                                            if debug then
+                                                                                                   print("bookingDate:", v.bookingDate)
+                                                                                                   print("  valueDate:", v.valuta)
+                                                                                                   print("  purpose:", v.purposeLine[1])
+                                                                                                   print("  amount:", v.value.value * v.price.value)
+                                                                                        end
+                                end
 
-                                                                 -- Trennen von Betrag und Währung
-                                local Betrag, Waehrung = string.match(Wert, '(-?%d+,?%d+)%s*(%w+)' )
-
-                                                                if debug then
-                                                                        print("Valuta:", Valuta)
-                                                                        print("Buchungsinformationen:", Buchungsinformationen)
-                                                                        print("Betrag:", Betrag)
-                                                                        print("Waehrung:", Waehrung)
-                                                                        print("Buchtag:", Buchtag)
-                                                                        print("Assetklasse:", Assetklasse)
-                                                                        print("Produktbezeichnung:", Produktbezeichnung        )
-                                                                        print("Anteile:", Anteile)
-                                                                        print("Kurs:", Kurs)
-                                                                        print("ISIN:", ISIN)
-                                                                        print("TAN:", TAN)
-                                                                end
-
-                                    table.insert(transactions,
-                                       {
-                                               bookingDate = DateStr2Timestamp( Buchtag         ),
-                                               valueDate = DateStr2Timestamp( Valuta ),
-                                               purpose = Buchungsinformationen .. "\n" .. Assetklasse .. "\n" .. Produktbezeichnung .. "\nAnteile " .. Anteile .. " Kurs " .. Kurs .. "\nISIN " .. ISIN .. " TAN " .. TAN,
-                                               amount = Text2Val ( Betrag ),
-                                               currency = Waehrung
-                                       }
-                               )
-                        end
-                )
         -- Typ PERFORMANCE liefert JSON, wir werten nur 4 aus, weitere möglich
         elseif ( prefix == "PERFORMANCE" ) then
 
@@ -536,6 +439,20 @@ function DateStr2Timestamp(dateStr)
 end
 
 --------------------------------------------------------------------------------------------------------------------------
+-- Helper: Datum in Timestamp wandeln
+-- YYYY-MM-DD
+
+function IsoDateStr2Timestamp(dateStr)
+    local yearStr, monthStr, dayStr  = string.match(dateStr, "(%d%d%d%d)%-(%d%d)%-(%d%d)")
+
+    return os.time({
+        year = tonumber(yearStr),
+        month = tonumber(monthStr),
+        day = tonumber(dayStr)
+    })
+end
+
+--------------------------------------------------------------------------------------------------------------------------
 -- Logout
 -- Tricky, geht nur als POST
 
@@ -578,4 +495,4 @@ function round2(num, numDecimalPlaces)
   return tonumber(string.format("%." .. (numDecimalPlaces or 0) .. "f", num))
 end
 
--- SIGNATURE: MCwCFDs3hU4sU5YyFv/ASHSuOEJ7NOQ8AhRXDUeDks7oGhm7xE5f9KVq/fEjxQ==
+-- SIGNATURE: MC0CFQCGBGxvHP1i8flamyNPQhX0In8bEwIUSYefD/AxwSTMXAg7Nph0E4iJfl8=
