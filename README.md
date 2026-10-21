@@ -23,7 +23,7 @@ Zusammen als **Kontogruppe** mit *"Kontostand in Saldenleiste anzeigen"* zusamme
 ![MoneyMoney screenshot Kontogruppe](Screenshots/Kontogruppe.png)
 
 
-## Neue Whitebox-Oberfläche (Version 1.18)
+## Neue Whitebox-Oberfläche (Version 1.16)
 
 Die Erweiterung nutzt die GraphQL-Schnittstelle der neuen Whitebox-Oberfläche.
 Die Anmeldung erfolgt weiterhin über das vorhandene Login-Formular; anschließend
@@ -60,6 +60,11 @@ Buchungsbetrag enthaltene Kosten vom Ausführungskurs abweichen. Fehlende oder
 nullwertige Stückzahlen/Beträge erhalten keinen berechneten Kurs. Der importierte
 Buchungsbetrag bleibt unverändert.
 
+Bei Cashbuchungen steht die Order-/Referenznummer am Anfang derselben Zeile,
+zum Beispiel `123456789 Ausführung Order Verkauf IE00TEST00001`. Sie wird nicht
+als alleinstehende Nummer in einer zusätzlichen Zeile angehängt. Alle Anpassungen
+an die neue Oberfläche sind in der gemeinsamen Version **1.16** zusammengefasst.
+
 ### Installation einer angepassten Version
 
 1. In MoneyMoney **Hilfe → Zeige Datenbank im Finder** wählen und den Ordner
@@ -71,7 +76,7 @@ Buchungsbetrag bleibt unverändert.
    überprüfen** ausgeschaltet sein. Für die reguläre Veröffentlichung muss die
    Erweiterung durch MoneyMoney neu signiert werden.
 4. Den Zugang neu einrichten oder **Nach neuen Konten suchen** ausführen.
-   Im Protokoll muss **Whitebox.lua version 1.17** erscheinen.
+   Im Protokoll muss **Whitebox.lua version 1.16** erscheinen.
 
 Beim ersten Abruf Cashbestand, Depotwert und einzelne Käufe/Verkäufe mit Whitebox
 vergleichen. Bei vorhandenen Buchungen können geänderte Buchungstexte und Beträge

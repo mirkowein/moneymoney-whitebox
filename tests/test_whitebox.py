@@ -235,6 +235,24 @@ def test_cash_transactions_keep_sign_currency_reference_and_newest_first(h):
     assert "valueDate" not in result["transactions"][0]  # Not supplied by this API.
 
 
+@pytest.mark.parametrize("action", ["Kauf", "Verkauf"])
+def test_cash_order_number_starts_description_on_the_same_line(h, action):
+    description = f"Ausführung Order {action} IE00TEST00001"
+    h.portfolio_response("MoneyMoneyCash", cashAccount={"balance": money(100)},
+        cashTransactions=[dict(date="2026-09-20", description=description,
+            number="123456789", value=money(12.34))])
+    row = h.refresh("KONTO")["transactions"][0]
+    assert row["purpose"] == "123456789 " + description
+    assert row["amount"] == 12.34
+
+
+def test_cash_reference_without_description_is_labelled(h):
+    h.portfolio_response("MoneyMoneyCash", cashAccount={"balance": money(100)},
+        cashTransactions=[dict(date="2026-09-20", description="",
+            number="123456789", value=money(12.34))])
+    assert h.refresh("KONTO")["transactions"][0]["purpose"] == "Referenz 123456789"
+
+
 def test_depot_uses_signed_booked_value_instead_of_quantity_times_price(h):
     rows = [dict(date="2026-09-20", description="Kauf", number="D1", isin="IE00TEST00001",
                  productName="Test ETF", quantity="5.5", value=money(-555.75))]

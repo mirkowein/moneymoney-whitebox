@@ -23,16 +23,15 @@
 -- THE SOFTWARE.
 --
 -- 1.16 (2026-10-21, unsigned version): Replace retired HTML/REST
--- scraping with the GraphQL queries used by Whitebox frontend 2.10.1.
--- 1.17 (2026-10-21): Restore asset-class suffixes in security names.
--- 1.18 (2026-10-21): Restore depot transaction text and label derived prices.
+-- scraping with GraphQL, including asset-class names and transaction text.
+-- Keep cash references at the start of the description on the same line.
 -- KONTO + DEPOT or KONTO + PORTFOLIO represent one goal's assets.
 -- PERFORMANCE contains information only and contributes no balance.
 
 local BASE_URL = "https://inside.whitebox.eu"
 
 WebBanking {
-    version = 1.18,
+    version = 1.16,
     url = BASE_URL .. "/login",
     services = {"Whitebox"},
     description = "Whitebox"
@@ -385,7 +384,10 @@ local function ReadTransactions(rows, isDepot, classes)
             if reference ~= "" then table.insert(lines, reference) end
             purpose = table.concat(lines, "\n")
         elseif Text(row.number) ~= "" then
-            purpose = purpose .. "\n" .. Text(row.number)
+            -- A bare numeric reference on its own line may be interpreted as
+            -- a telephone number. Keep it with the cash booking description.
+            purpose = purpose ~= "" and (Text(row.number) .. " " .. purpose)
+                or ("Referenz " .. Text(row.number))
         end
         table.insert(transactions, {
             bookingDate = IsoDateStr2Timestamp(row.date),
