@@ -1,10 +1,7 @@
---
--- MoneyMoney Web Banking extension
--- http://moneymoney-app.com/api/webbanking
---
+-- MoneyMoney Web Banking extension for Whitebox.
+-- Based on https://github.com/mirkowein/moneymoney-whitebox
 --
 -- The MIT License (MIT)
---
 -- Copyright (c) Mirko Weinschenk
 --
 -- Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -25,442 +22,352 @@
 -- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 -- THE SOFTWARE.
 --
---
--- Get balances for Whitebox.eu
---
--- Es werden 2 Accounts für jedes aktive Ziel angelegt
--- KONTO und DEPOT
--- Tipp: Zusammen als Kontogruppe mit Kontostand in Saldenleiste zusammenfassen, dann hat man den Gesamtwert des Ziels
---
--- Historie:
--- 1.00                        Initial
--- 1.01                        Fix for Currencies in Depot
--- 1.02                        Fix for ListAccounts
--- 1.03                        Fix for Login
--- 1.04                        New performance account for displaying Whitebox performance
--- 1.05                        New portfolio account. You may have to choose from DEPOT or PORTFOLIO.
--- 1.06                        Fix for new subdomain inside.whitebox.eu
--- 1.07                        Fix for new design
--- 1.08                        Fix for new portfolio design
--- 1.09                        Fix for Login
--- 1.10                        Fix for new urls
--- 1.11                        Remove debug on non-existing value; Fix Portfolio Import by https://github.com/calcosta
--- 1.12                        json for KONTO and DEPOT
--- 1.13                        Fix for payment purpose. Removed unused functions.
--- 1.14                        Fix for lua update MM.time()
--- 1.15                        2026-05-21 Fix for login
+-- 1.16 (2026-10-21, unsigned version): Replace retired HTML/REST
+-- scraping with the GraphQL queries used by Whitebox frontend 2.10.1.
+-- KONTO + DEPOT or KONTO + PORTFOLIO represent one goal's assets.
+-- PERFORMANCE contains information only and contributes no balance.
+
+local BASE_URL = "https://inside.whitebox.eu"
 
 WebBanking {
-    version = 1.14,
-    url = "https://inside.whitebox.eu",
+    version = 1.16,
+    url = BASE_URL .. "/login",
     services = {"Whitebox"},
     description = "Whitebox"
 }
+
+local connection, authToken, csrfToken, walletId
+local goals, goalsByKey
+
+-- Field names and argument types come from the public frontend's generated
+-- queries. Request only read operations; all responses must be complete.
+local GOALS_QUERY = [[
+query MoneyMoneyGoals($walletId: ID!) {
+  wealthGoals(walletId: $walletId) {
+    id slug name status portfolioId
+  }
+}
+]]
+
+local CASH_QUERY = [[
+query MoneyMoneyCash($walletId: ID!, $portfolioIds: [ID!], $from: ISO8601Date, $to: ISO8601Date) {
+  portfolios(walletId: $walletId, portfolioIds: $portfolioIds, productType: WEALTH) {
+    id
+    cashAccount { balance { amount currency { isoCode } } }
+    cashTransactions(from: $from, to: $to) {
+      date description number value { amount currency { isoCode } }
+    }
+  }
+}
+]]
+
+local DEPOT_QUERY = [[
+query MoneyMoneyDepot($walletId: ID!, $portfolioIds: [ID!], $from: ISO8601Date, $to: ISO8601Date) {
+  portfolios(walletId: $walletId, portfolioIds: $portfolioIds, productType: WEALTH) {
+    id
+    depotAccount { currentValue { amount currency { isoCode } } }
+    depotTransactions(from: $from, to: $to) {
+      date description number isin productName quantity
+      value { amount currency { isoCode } }
+    }
+  }
+}
+]]
+
+local ASSETS_QUERY = [[
+query MoneyMoneyAssets($walletId: ID!, $portfolioIds: [ID!]) {
+  assets(walletId: $walletId, portfolioIds: $portfolioIds, productType: WEALTH) {
+    securityData {
+      isin name shares marketPrice averagePurchasePrice
+      totalValue { amount currency { isoCode } }
+    }
+  }
+}
+]]
+
+local PERFORMANCE_QUERY = [[
+query MoneyMoneyPerformance($walletId: ID!, $portfolioIds: [ID!]) {
+  portfolios(walletId: $walletId, portfolioIds: $portfolioIds, productType: WEALTH) {
+    id
+    performanceReport(input: {withWhiteboxFees: true, withTaxes: true}) {
+      endAssets { amount currency { isoCode } }
+      returnInEuro { amount currency { isoCode } }
+      moneyWeightedReturnInPercentage
+      moneyWeightedReturnAnnualizedInPercentage
+    }
+  }
+}
+]]
+
+local function Fail(message)
+    error("Whitebox: " .. message, 0)
+end
+
+local function ReadJSON(content, context)
+    local ok, result = pcall(function() return JSON(content):dictionary() end)
+    if not ok or type(result) ~= "table" then
+        Fail(context .. ": keine gültige JSON-Antwort. Bitte die Anmeldung auf der Whitebox-Webseite prüfen.")
+    end
+    return result
+end
+
+local function RequireTable(value, field)
+    if type(value) ~= "table" then
+        Fail("Antwort unvollständig: " .. field .. " fehlt. Es werden keine leeren Bestände übernommen.")
+    end
+    return value
+end
+
+local function Number(value, field)
+    local number = (type(value) == "number" or type(value) == "string") and tonumber(value) or nil
+    if not number or number ~= number or number == math.huge or number == -math.huge then
+        Fail("Ungültiger Zahlenwert für " .. field .. ".")
+    end
+    return number
+end
+
+local function Text(value)
+    if type(value) == "string" or type(value) == "number" then return tostring(value) end
+    return ""
+end
+
+local function Now()
+    if MM and MM.time then return math.floor(MM.time()) end
+    return os.time()
+end
+
+local function Amount(money, field, expectedCurrency)
+    RequireTable(money, field)
+    local currency = RequireTable(money.currency, field .. ".currency").isoCode
+    if type(currency) ~= "string" or currency == "" then Fail("Währung fehlt: " .. field .. ".") end
+    if expectedCurrency and currency ~= expectedCurrency then
+        Fail("Unerwartete Währung bei " .. field .. ": " .. currency .. ".")
+    end
+    return Number(money.amount, field .. ".amount"), currency
+end
+
+local function GraphQL(operation, query, variables)
+    if not authToken then Fail("Keine aktive Sitzung. Bitte erneut anmelden.") end
+    local body = JSON():set({operationName = operation, query = query, variables = variables}):json()
+    local headers = {Accept = "application/json", Authorization = "Bearer " .. authToken}
+    local content = connection:request("POST", BASE_URL .. "/graphql", body, "application/json", headers)
+    local result = ReadJSON(content, operation)
+    if result.errors ~= nil then
+        RequireTable(result.errors, "errors")
+        for _, item in pairs(result.errors) do
+            if type(item) == "table" and type(item.extensions) == "table"
+                and item.extensions.code == "UNAUTHENTICATED" then
+                Fail("Sitzung abgelaufen. Bitte erneut anmelden.")
+            end
+            -- Do not print response bodies, credentials or session tokens.
+            Fail("Die Datenabfrage " .. operation .. " wurde abgewiesen: " ..
+                (type(item) == "table" and Text(item.message) or "GraphQL-Fehler"))
+        end
+    end
+    return RequireTable(result.data, operation .. ".data")
+end
+
+local function LoadGoals()
+    if goals then return end
+    local data = GraphQL("MoneyMoneyGoals", GOALS_QUERY, {walletId = walletId})
+    local loaded = RequireTable(data.wealthGoals, "wealthGoals")
+    local byKey = {}
+    for _, goal in ipairs(loaded) do
+        RequireTable(goal, "wealthGoals[]")
+        if Text(goal.id) == "" then Fail("Die Anlagenkennung fehlt.") end
+        -- Keep the complete server-provided slug, including numeric suffixes.
+        -- Existing KONTO_<slug>, DEPOT_<slug>, ... identifiers remain usable.
+        local key = Text(goal.slug)
+        if key == "" then key = Text(goal.id) end
+        if byKey[key] then Fail("Whitebox hat doppelte Anlagenkennungen geliefert.") end
+        goal.accountKey = key
+        byKey[key] = goal
+    end
+    goals, goalsByKey = loaded, byKey
+end
 
 function SupportsBank(protocol, bankCode)
     return protocol == ProtocolWebBanking and bankCode == "Whitebox"
 end
 
-local connection = nil
-local loginresponse = nil
-local connection = Connection()
-local debug = false
-local sub_url = ""
-
---------------------------------------------------------------------------------------------------------------------------
--- Session
-
 function InitializeSession(protocol, bankCode, username, username2, password, username3)
-    connection.language = "de-de"
+    authToken, csrfToken, walletId, goals, goalsByKey = nil, nil, nil, nil, nil
+    connection = Connection()
+    connection.language = "de-DE"
 
-    print("Version" .. version)
-    local response = HTML(connection:get(url))
+    local page = HTML(connection:get(BASE_URL .. "/login"))
+    local email = page:xpath("//input[@name='session[email]']")
+    local pass = page:xpath("//input[@name='session[password]']")
+    local button = page:xpath("//*[@id='login-btn']")
+    if email:length() ~= 1 or pass:length() ~= 1 or button:length() ~= 1 then
+        return "Whitebox: Das Anmeldeformular wurde geändert."
+    end
+    email:attr("value", username)
+    pass:attr("value", password)
+    -- MoneyMoney includes the hidden Rails authenticity_token and cookies.
+    local response = HTML(connection:request(button:click()))
+    walletId = string.match(connection:getBaseURL(), "^https://inside%.whitebox%.eu/w/([^/?#]+)/")
+    if not walletId then
+        if response:xpath("//input[@name='session[password]']"):length() > 0 then return LoginFailed end
+        return "Whitebox: Anmeldung nicht abgeschlossen. Bitte Hinweise auf der Whitebox-Webseite prüfen."
+    end
 
-    response:xpath("//input[@name='session[email]']"):attr("value", username)
-    response:xpath("//input[@name='session[password]']"):attr("value", password)
-    loginresponse = HTML(connection:request(response:xpath("//*[@id='login-btn']"):click()))
-    if debug then
-        print("Extract sub url")
+    -- The new frontend exchanges the Rails session cookie for a GraphQL token.
+    local content = connection:request("GET", BASE_URL .. "/api/onboarding/session", "", nil,
+        {Accept = "application/json", ["X-Requested-With"] = "XMLHttpRequest"})
+    local session = ReadJSON(content, "Sitzung")
+    if type(session.authToken) ~= "string" or session.authToken == "" then
+        return "Whitebox: Die Sitzung liefert kein Zugriffstoken. Bitte erneut auf der Webseite anmelden."
     end
-    -- https://inside.whitebox.eu/w/8d667b52-c8ec-48ce-9b0a-0e680a7123f5/goals
-    sub_url = string.match(connection:getBaseURL(), "whitebox.eu/(.+)wealth")
-
-    -- should now be w/8d667b52-c8ec-48ce-9b0a-0e680a7123f5/
-    if debug then
-        print("sub_url=", sub_url)
-    end
-    if (loginresponse:xpath("//*[@class='msg msg-large msg-error']"):text() == "Keine gültigen Zugangsdaten.") then
-        return LoginFailed
-    end
-    if debug then
-        print("End InitializeSession")
-    end
+    authToken = session.authToken
+    csrfToken = session.csrfToken
 end
 
---------------------------------------------------------------------------------------------------------------------------
--- Accounts
--- Es werden 2 Accounts für jedes aktive Ziel angelegt
--- KONTO und DEPOT
--- Tipp: Zusammen als Kontogruppe mit Kontostand in Saldenleiste zusammenfassen, dann hat man den Gesamtwert des Ziels
-
 function ListAccounts(knownAccounts)
+    LoadGoals()
     local accounts = {}
-
-    -- Buttons Einzahlen, um alle aktiven Goals zu bekommen
-    loginresponse:xpath("//*/a[@class='js-deposit deposit-btn']"):each(
-        function(index, element)
-            local accountType = AccountTypeGiro
-            local goal = string.match(element:attr("href"), "/goals/(.+)/projection")
-
-            -- Insert Konto
-            -- Präfix KONTO_
-            table.insert(
-                accounts,
-                {
-                    name = "Konto " .. goal,
-                    accountNumber = "KONTO_" .. goal,
-                    currency = "EUR",
-                    type = AccountTypeSavings
-                }
-            )
-
-            -- Insert Portfolio / Depot
-            -- Präfix DEPOT_
-            table.insert(
-                accounts,
-                {
-                    name = "Depot " .. goal,
-                    accountNumber = "DEPOT_" .. goal,
-                    currency = "EUR",
-                    type = AccountTypePortfolio
-                }
-            )
-            -- Insert Portfolio / Performance
-            -- Präfix PERFORMANCE_
-            table.insert(
-                accounts,
-                {
-                    name = "Performance " .. goal,
-                    accountNumber = "PERFORMANCE_" .. goal,
-                    currency = "EUR",
-                    portfolio = true,
-                    type = AccountTypePortfolio
-                }
-            )
-            -- Insert Portfolio / Portfolio
-            -- Präfix PORTFOLIO_
-            table.insert(
-                accounts,
-                {
-                    name = "Portfolio " .. goal,
-                    accountNumber = "PORTFOLIO_" .. goal,
-                    currency = "EUR",
-                    portfolio = true,
-                    type = AccountTypePortfolio
-                }
-            )
+    local types = {
+        {"KONTO", "Konto", AccountTypeSavings, false},
+        {"DEPOT", "Depot", AccountTypePortfolio, false},
+        {"PERFORMANCE", "Performance", AccountTypePortfolio, true},
+        {"PORTFOLIO", "Portfolio", AccountTypePortfolio, true}
+    }
+    for _, goal in ipairs(goals) do
+        if goal.status == "ACTIVE" and Text(goal.portfolioId) ~= "" then
+            for _, kind in ipairs(types) do
+                table.insert(accounts, {
+                    name = kind[2] .. " " .. (Text(goal.name) ~= "" and goal.name or goal.accountKey),
+                    accountNumber = kind[1] .. "_" .. goal.accountKey,
+                    currency = "EUR", type = kind[3], portfolio = kind[4]
+                })
+            end
         end
-    )
+    end
+    if #accounts == 0 then
+        Fail("Keine aktiven Anlagen mit zugeordnetem Depot gefunden. Bitte die Anlagen auf der Whitebox-Webseite prüfen.")
+    end
     return accounts
 end
 
---------------------------------------------------------------------------------------------------------------------------
--- Transaktionen
+function IsoDateStr2Timestamp(dateStr)
+    local year, month, day = string.match(Text(dateStr), "^(%d%d%d%d)%-(%d%d)%-(%d%d)$")
+    if not year then Fail("Ungültiges Buchungsdatum.") end
+    local timestamp = os.time({year = tonumber(year), month = tonumber(month), day = tonumber(day), hour = 12})
+    if not timestamp or os.date("%Y-%m-%d", timestamp) ~= dateStr then Fail("Ungültiges Buchungsdatum.") end
+    return timestamp
+end
+
+local function OnePortfolio(data, portfolioId)
+    local portfolios = RequireTable(data.portfolios, "portfolios")
+    -- Never aggregate all portfolios if the server ignored the requested ID.
+    if #portfolios ~= 1 or Text(portfolios[1].id) ~= portfolioId then
+        Fail("Das angeforderte Depot konnte nicht eindeutig zugeordnet werden.")
+    end
+    return portfolios[1]
+end
+
+local function ReadTransactions(rows, isDepot)
+    RequireTable(rows, isDepot and "depotTransactions" or "cashTransactions")
+    local transactions = {}
+    for _, row in ipairs(rows) do
+        RequireTable(row, "Umsatz")
+        local amount, currency = Amount(row.value, "Umsatzbetrag")
+        local purpose = Text(row.description)
+        if isDepot then
+            if Text(row.productName) ~= "" then purpose = purpose .. "\n" .. row.productName end
+            if Text(row.isin) ~= "" then purpose = purpose .. "\nISIN " .. row.isin end
+            if row.quantity ~= nil then purpose = purpose .. "\nAnteile " .. Text(row.quantity) end
+        end
+        if Text(row.number) ~= "" then purpose = purpose .. "\n" .. Text(row.number) end
+        table.insert(transactions, {
+            bookingDate = IsoDateStr2Timestamp(row.date),
+            purpose = purpose, amount = amount, currency = currency
+        })
+    end
+    table.sort(transactions, function(a, b) return a.bookingDate > b.bookingDate end)
+    return transactions
+end
+
+local function PerformanceSecurities(report)
+    RequireTable(report, "performanceReport")
+    local result = {}
+    local function Add(key, label, value, unit)
+        -- A return may legitimately be null before the first investment.
+        local formatted = value == nil and "nicht verfügbar" or (string.format("%.2f", Number(value, key)) .. unit)
+        table.insert(result, {
+            name = label .. ": " .. formatted,
+            isin = "Performance " .. key, market = "Whitebox",
+            quantity = 0, price = 0, amount = 0, tradeTimestamp = Now()
+        })
+    end
+    Add("end_assets", "Vermögensstand", Amount(report.endAssets, "endAssets", "EUR"), " €")
+    -- These GraphQL fields already contain percentages (no multiplication by 100).
+    Add("mwr", "Geldgewichtete Rendite", report.moneyWeightedReturnInPercentage, " %")
+    Add("yearly_mwr", "Geldgewichtete Rendite annualisiert", report.moneyWeightedReturnAnnualizedInPercentage, " %")
+    Add("return_in_euro", "Wertentwicklung nach Kosten und Steuern", Amount(report.returnInEuro, "returnInEuro", "EUR"), " €")
+    return {securities = result}
+end
 
 function RefreshAccount(account, since)
-    local transactions = {}
-    local balance = nil
-    local type_text = nil
+    LoadGoals() -- MoneyMoney does not call ListAccounts during a normal refresh.
+    local prefix, key = string.match(Text(account.accountNumber), "^([A-Z]+)_(.+)$")
+    if prefix ~= "KONTO" and prefix ~= "DEPOT" and prefix ~= "PORTFOLIO" and prefix ~= "PERFORMANCE" then
+        Fail("Unbekannte Kontoart. Bitte die Kontenliste erneut abrufen.")
+    end
+    local goal = goalsByKey[key]
+    if not goal then Fail("Die gespeicherte Anlage wurde nicht gefunden. Bitte nach neuen Konten suchen.") end
+    local portfolioId = Text(goal.portfolioId)
+    if portfolioId == "" then Fail("Dieser Anlage ist noch kein Depot zugeordnet.") end
+    local variables = {walletId = walletId, portfolioIds = {portfolioId}}
 
-    -- Prefix KONTO oder DEPOT erkennen
-    local prefix, goal = string.match(account.accountNumber, "^(.+)_(.+)$")
-
-    -- Seit wann als Text DD.MM.YYYY
-    local timeStrStart = os.date("%d.%m.%Y", since)
-    local timeStrEnd = os.date("%d.%m.%Y", os.time())
-
-    if debug then
-        print("timeStrStart:", timeStrStart)
-        print("timeStrEnd:", timeStrEnd)
+    if prefix == "PORTFOLIO" then
+        local data = GraphQL("MoneyMoneyAssets", ASSETS_QUERY, variables)
+        local rows = RequireTable(RequireTable(data.assets, "assets").securityData, "assets.securityData")
+        local securities = {}
+        for _, row in ipairs(rows) do
+            RequireTable(row, "Depotposition")
+            if Text(row.isin) == "" then Fail("ISIN einer Depotposition fehlt.") end
+            local amount = Amount(row.totalValue, "Depotposition", account.currency or "EUR")
+            local security = {
+                name = Text(row.name), isin = row.isin,
+                quantity = Number(row.shares, "shares"), amount = amount,
+                tradeTimestamp = Now()
+            }
+            -- Prices in the frontend are shown in EUR; omit missing prices
+            -- instead of manufacturing a zero purchase price.
+            if row.marketPrice ~= nil then security.price = Number(row.marketPrice, "marketPrice") end
+            if row.averagePurchasePrice ~= nil then security.purchasePrice = Number(row.averagePurchasePrice, "averagePurchasePrice") end
+            table.insert(securities, security)
+        end
+        return {securities = securities}
+    elseif prefix == "PERFORMANCE" then
+        local data = GraphQL("MoneyMoneyPerformance", PERFORMANCE_QUERY, variables)
+        return PerformanceSecurities(OnePortfolio(data, portfolioId).performanceReport)
     end
 
-    -- Typ KONTO
-    if (prefix == "KONTO") then
-        -- Typ DEPOT
-        type_text = "Kontostand"
-
-        -- build url
-        -- https://inside.whitebox.eu/w/8d667b52-c8ec-48ce-9b0a-0e680a7123f5/goals/sparen-2024/statements
-        url =
-            "https://inside.whitebox.eu/" ..
-            sub_url ..
-                "goals/" ..
-                    goal ..
-                        "/statements?statements_query[query_class]=account&statements_query[timespan]=none&statements_query[start_date]=" ..
-                            timeStrStart .. "&statements_query[end_date]=" .. timeStrEnd
-
-        -- unbedingt den header setzten, sonst antwortet whitebox mit Fehler
-        headers = {
-            ["Accept"] = "application/json"
-        }
-
-        -- Abfrage starten
-        local content, charset, mimeType =
-            connection:request("GET", url, "", "application/x-www-form-urlencoded; charset=UTF-8", headers)
-
-        -- whitebox schickt html als json
-        -- Felder umwandeln
-        local fields = JSON(content):dictionary()
-
-        if debug then
-            print("Fetched account:", account)
-            print("  charset:", charset)
-            print("  mimeType:", mimeType)
-            print("  fields:", fields.html)
-        end
-
-        balance = fields.statements.cash_value
-
-        if debug then
-            print("balance:", balance)
-        end
-
-        for k, v in pairs(fields.statements.account_statements) do
-            local paypurpose = ""
-            for key, value in pairs(v.paymentPurpose) do
-                paypurpose = paypurpose .. value .. " "
-            end
-            table.insert(
-                transactions,
-                {
-                    bookingDate = IsoDateStr2Timestamp(v.bookingDate),
-                    valueDate = IsoDateStr2Timestamp(v.valuta),
-                    purpose = paypurpose .. v.taNumber,
-                    amount = v.amount.value
-                }
-            )
-            if debug then
-                print("bookingDate:", v.bookingDate)
-                print("  valueDate:", v.valuta)
-                print("  purpose:", paypurpose)
-                print("  amount:", v.amount.value)
-            end
-        end
-    elseif (prefix == "DEPOT") then
-        -- Typ PERFORMANCE liefert JSON, wir werten nur 4 aus, weitere möglich
-        type_text = "Depotbestand"
-
-        -- build url
-        url =
-            "https://inside.whitebox.eu/" ..
-            sub_url ..
-                "goals/" ..
-                    goal ..
-                        "/statements?statements_query[query_class]=account&statements_query[timespan]=none&statements_query[start_date]=" ..
-                            timeStrStart .. "&statements_query[end_date]=" .. timeStrEnd
-
-        -- unbedingt den header setzten, sonst antwortet whitebox mit Fehler
-        headers = {
-            ["Accept"] = "application/json"
-        }
-
-        -- Abfrage starten
-        local content, charset, mimeType =
-            connection:request("GET", url, "", "application/x-www-form-urlencoded; charset=UTF-8", headers)
-
-        -- whitebox schickt html als json
-        -- Felder umwandeln
-        local fields = JSON(content):dictionary()
-
-        if debug then
-            print("Fetched account:", account)
-            print("  charset:", charset)
-            print("  mimeType:", mimeType)
-            print("  fields:", fields.html)
-        end
-
-        balance = fields.statements.depot_value
-
-        if debug then
-            print("balance:", balance)
-        end
-
-        for k, v in pairs(fields.statements.depot_statements) do
-            table.insert(
-                transactions,
-                {
-                    bookingDate = IsoDateStr2Timestamp(v.bookingDate),
-                    valueDate = IsoDateStr2Timestamp(v.valuta),
-                    purpose = v.purposeLine[1] ..
-                        "\n" ..
-                            v.asset_class ..
-                                "\n" ..
-                                    v.paper.name ..
-                                        "\nAnteile " ..
-                                            v.value.value ..
-                                                " Kurs " ..
-                                                    v.price.value .. "\nISIN " .. v.paper.isin .. " TAN " .. v.taNumber,
-                    amount = v.value.value * v.price.value,
-                    currency = v.price.currency
-                }
-            )
-            if debug then
-                print("bookingDate:", v.bookingDate)
-                print("  valueDate:", v.valuta)
-                print("  purpose:", v.purposeLine[1])
-                print("  amount:", v.value.value * v.price.value)
-            end
-        end
-    elseif (prefix == "PERFORMANCE") then
-        -- Typ PORTFOLIO
-        -- build url
-        url =
-            "https://inside.whitebox.eu/" ..
-            sub_url .. "goals/" .. goal .. "/performances?from=&to=&with_whitebox_fees=true&with_taxes=true"
-
-        -- unbedingt den header setzten, sonst antwortet whitebox mit Fehler
-        headers = {
-            ["Accept"] = "application/json"
-        }
-
-        -- Abfrage starten
-        local content, charset, mimeType =
-            connection:request("GET", url, "", "application/x-www-form-urlencoded; charset=UTF-8", headers)
-
-        -- whitebox schickt html als json
-        -- Felder umwandeln
-        local fields = JSON(content):dictionary()
-
-        if debug then
-            print("Fetched account:", account)
-            print("  charset:", charset)
-            print("  mimeType:", mimeType)
-            print("  fields:", fields.report)
-        end
-
-        table.insert(
-            transactions,
-            {
-                name = "Vermögensstand: " .. string.format("%.2f", fields.report["end_assets"]) .. " €",
-                market = "Whitebox",
-                isin = "Performance end_assets",
-                currency = "EUR",
-                tradeTimestamp = os.time(),
-                currencyOfPrice = "EUR",
-                currencyOfPurchasePrice = "EUR"
-            }
-        )
-        table.insert(
-            transactions,
-            {
-                name = "Geldgewichtete Rendite: " .. round2(fields.report["mwr"] * 100, 2) .. " %",
-                market = "Whitebox",
-                isin = "Performance mwr",
-                tradeTimestamp = os.time(),
-                currencyOfPurchasePrice = "EUR"
-            }
-        )
-        table.insert(
-            transactions,
-            {
-                name = "Geldgewichtete Rendite annualisiert: " .. round2(fields.report["yearly_mwr"] * 100, 2) .. " %",
-                market = "Whitebox",
-                isin = "Performance yearly_mwr",
-                tradeTimestamp = os.time(),
-                currencyOfPurchasePrice = "EUR"
-            }
-        )
-        table.insert(
-            transactions,
-            {
-                name = "Erfolgsrelevante Kapitalveränderungen: " ..
-                    string.format("%.2f", fields.report["sum_of_erfolgsrelevante_kapitalveraenderungen"]) .. " €",
-                market = "Whitebox",
-                isin = "Performance sum_of_erfolgsrelevante_kapitalveraenderungen",
-                tradeTimestamp = os.time(),
-                currencyOfPurchasePrice = "EUR"
-            }
-        )
-
-        --end
-
-        return {securities = transactions}
-    elseif (prefix == "PORTFOLIO") then
-        -- build url
-        url = "https://inside.whitebox.eu/" .. sub_url .. "goals/" .. goal .. "/portfolio"
-
-        -- unbedingt den header setzten, sonst antwortet whitebox mit Fehler
-        headers = {
-            ["Accept"] = "application/json"
-        }
-
-        -- Abfrage starten
-        local content, charset, mimeType =
-            connection:request("GET", url, "", "application/x-www-form-urlencoded; charset=UTF-8", headers)
-
-        -- whitebox schickt html als json
-        -- Felder umwandeln
-        local fields = JSON(content):dictionary()
-
-        if debug then
-            print("Fetched account:", account)
-            print("  charset:", charset)
-            print("  mimeType:", mimeType)
-        end
-
-        for k, v in pairs(fields.active_portfolio.table_data) do
-            table.insert(
-                transactions,
-                {
-                    name = v.fund_name .. " (" .. v.class_name .. ")",
-                    isin = v.isin,
-                    quantity = v.paper_quantity,
-                    amount = v.rating_value,
-                    tradeTimestamp = os.time(),
-                    price = v.rating_price,
-                    purchasePrice = v.buying_price
-                }
-            )
-        end
-
-        return {securities = transactions}
-    end
-    return {balance = balance, transactions = transactions}
+    -- A missing `since` means the complete history, not an arbitrary cutoff.
+    if since then variables.from = os.date("%Y-%m-%d", math.floor(since)) end
+    variables.to = os.date("%Y-%m-%d", Now())
+    local isDepot = prefix == "DEPOT"
+    local data = GraphQL(isDepot and "MoneyMoneyDepot" or "MoneyMoneyCash",
+        isDepot and DEPOT_QUERY or CASH_QUERY, variables)
+    local portfolio = OnePortfolio(data, portfolioId)
+    local money
+    if isDepot then money = RequireTable(portfolio.depotAccount, "depotAccount").currentValue
+    else money = RequireTable(portfolio.cashAccount, "cashAccount").balance end
+    local balance = Amount(money, "Kontostand", account.currency or "EUR")
+    -- Use the signed transaction value provided by Whitebox, never shares * price.
+    local rows
+    if isDepot then rows = portfolio.depotTransactions else rows = portfolio.cashTransactions end
+    return {balance = balance, transactions = ReadTransactions(rows, isDepot)}
 end
-
-
---------------------------------------------------------------------------------------------------------------------------
--- Helper: Datum in Timestamp wandeln
--- YYYY-MM-DD
-
-function IsoDateStr2Timestamp(dateStr)
-    local yearStr, monthStr, dayStr = string.match(dateStr, "(%d%d%d%d)%-(%d%d)%-(%d%d)")
-
-    return os.time(
-        {
-            year = tonumber(yearStr),
-            month = tonumber(monthStr),
-            day = tonumber(dayStr)
-        }
-    )
-end
-
---------------------------------------------------------------------------------------------------------------------------
--- Logout
--- Tricky, geht nur als POST
 
 function EndSession()
-    url = "https://inside.whitebox.eu/logout"
-    local content, charset, mimeType = connection:post(url, "_method=delete")
+    if not connection then return end
+    local headers = {Accept = "application/json", ["X-Requested-With"] = "XMLHttpRequest"}
+    if type(csrfToken) == "string" and csrfToken ~= "" then headers["X-CSRF-Token"] = csrfToken end
+    authToken, csrfToken, walletId, goals, goalsByKey = nil, nil, nil, nil, nil
+    -- Preserve Whitebox's Rails logout endpoint and method override.
+    connection:request("POST", BASE_URL .. "/logout", "_method=delete",
+        "application/x-www-form-urlencoded", headers)
 end
-
-
---------------------------------------------------------------------------------------------------------------------------
--- Helper: round2
--- Rundes aus Anzahl Nachkommastellen
-
-function round2(num, numDecimalPlaces)
-    return tonumber(string.format("%." .. (numDecimalPlaces or 0) .. "f", num))
-end
-
--- SIGNATURE: MCwCFCEk8TqDZIXXpPca7ph86SwL1y2NAhQDtRj3+8j+3PQUSk05E0Cw/eEgsw==

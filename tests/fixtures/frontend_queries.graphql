@@ -1,0 +1,334 @@
+# Public Whitebox frontend 2.10.1, retrieved 2026-10-21. No account data.
+# Source: https://inside.whitebox.eu/_next/static/chunks/1tz_niucvfldq.js
+query GetGoalsForPreview($walletId: ID!) {
+  wealthGoals(walletId: $walletId, status: [CREATED]) {
+    id
+    slug
+    name
+    status
+    risk
+    plannedInitialSingleContribution
+    plannedMonthlyContribution
+    portfolioSet {
+      id
+      name
+    }
+  }
+}
+query GetGoalsForOverview($walletId: ID!) {
+  wealthGoals(walletId: $walletId) {
+    id
+    createdAt
+    name
+    status
+    type
+    specificType
+    liquidation
+    risk
+    tradingRisk
+    portfolioId
+    plannedInitialSingleContribution
+    portfolioSet {
+      id
+      name
+      state
+      riskLevels
+      expectedKpis {
+        expectedCvar
+        expectedProductCostsInPercent
+        expectedReturnInPercent
+        expectedVar
+        lossAmountThreshold
+        risk
+      }
+    }
+    pendingModelPortfolioChange {
+      fromPortfolioSetId
+      toPortfolioSetId
+      fromRisk
+      toRisk
+      status
+    }
+  }
+}
+query GetCashBalance($walletId: ID!, $portfolioIds: [ID!], $productType: ProductTypeEnum!) {
+  portfolios(
+    walletId: $walletId
+    productType: $productType
+    portfolioIds: $portfolioIds
+  ) {
+    cashAccount {
+      balance {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+    }
+  }
+}
+query GetDepotBalance($walletId: ID!, $portfolioIds: [ID!], $productType: ProductTypeEnum!) {
+  portfolios(
+    walletId: $walletId
+    productType: $productType
+    portfolioIds: $portfolioIds
+  ) {
+    depotAccount {
+      currentValue {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+    }
+  }
+}
+query GetCashTransactions($portfolioIds: [ID!], $productType: ProductTypeEnum!, $from: ISO8601Date, $to: ISO8601Date, $orderBy: PortfolioManagement__Graphql__Types__Input__TransactionsOrderByInput, $walletId: ID!) {
+  portfolios(
+    productType: $productType
+    portfolioIds: $portfolioIds
+    walletId: $walletId
+  ) {
+    cashTransactions(from: $from, to: $to, orderBy: $orderBy) {
+      date
+      depotName
+      description
+      number
+      value {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+    }
+  }
+}
+query GetDepotTransactions($walletId: ID!, $portfolioIds: [ID!], $productType: ProductTypeEnum!, $from: ISO8601Date, $to: ISO8601Date, $orderBy: PortfolioManagement__Graphql__Types__Input__TransactionsOrderByInput) {
+  portfolios(
+    walletId: $walletId
+    productType: $productType
+    portfolioIds: $portfolioIds
+  ) {
+    depotTransactions(from: $from, to: $to, orderBy: $orderBy) {
+      date
+      depotName
+      description
+      number
+      isin
+      productName
+      quantity
+      value {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+    }
+  }
+}
+query GetAssets($walletId: ID!, $portfolioIds: [ID!], $orderBy: PortfolioManagement__Graphql__Types__Input__AssetsOrderByInput, $productType: ProductTypeEnum!) {
+  assets(
+    walletId: $walletId
+    portfolioIds: $portfolioIds
+    orderBy: $orderBy
+    productType: $productType
+  ) {
+    securityData {
+      id: isin
+      isin
+      type
+      averagePurchasePrice
+      valueDevelopmentInPercentage
+      valueDevelopmentInEuro
+      name
+      depots
+      isin
+      shares
+      portfolioShare
+      marketPrice
+      totalValue {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+    }
+    sumData {
+      totalShares
+      totalPerformanceInEuro {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+      totalPerformanceInPercentage
+      totalValue {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+    }
+  }
+}
+query GetPerformanceReport($walletId: ID!, $productType: ProductTypeEnum, $portfolioIds: [ID!], $to: ISO8601Date, $from: ISO8601Date, $withWhiteboxFees: Boolean!, $withTaxes: Boolean!) {
+  portfolios(
+    walletId: $walletId
+    productType: $productType
+    portfolioIds: $portfolioIds
+  ) {
+    performanceReport(
+      input: {to: $to, from: $from, withWhiteboxFees: $withWhiteboxFees, withTaxes: $withTaxes}
+    ) {
+      startAssets {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+      payments {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+      deposits {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+      withdrawals {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+      unrealisedWinnings {
+        percentage
+        amount {
+          amount
+          currency {
+            isoCode
+            symbol
+          }
+        }
+      }
+      realisedWinnings {
+        percentage
+        amount {
+          amount
+          currency {
+            isoCode
+            symbol
+          }
+        }
+      }
+      interestEarnings {
+        percentage
+        amount {
+          amount
+          currency {
+            isoCode
+            symbol
+          }
+        }
+      }
+      dividends {
+        percentage
+        amount {
+          amount
+          currency {
+            isoCode
+            symbol
+          }
+        }
+      }
+      otherFees {
+        percentage
+        amount {
+          amount
+          currency {
+            isoCode
+            symbol
+          }
+        }
+      }
+      whiteboxFees {
+        percentage
+        amount {
+          amount
+          currency {
+            isoCode
+            symbol
+          }
+        }
+      }
+      taxes {
+        percentage
+        amount {
+          amount
+          currency {
+            isoCode
+            symbol
+          }
+        }
+      }
+      endAssets {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+      returnInEuro {
+        amount
+        currency {
+          isoCode
+          symbol
+        }
+      }
+      moneyWeightedReturnAnnualizedInPercentage
+      moneyWeightedReturnInPercentage
+      timeWeightedReturnAnnualizedInPercentage
+      timeWeightedReturnInPercentage
+      yearlyStandardDeviationInPercentage
+      showStandardDeviation
+      showSharpeRatio
+      drawdownInPercentage
+      yearlySharpeRatio
+      dateRange {
+        from
+        to
+      }
+    }
+  }
+}
+
+query GetTotalValueOfPortfolios($walletId: ID!, $portfolioIds: [ID!], $productType: ProductTypeEnum!) {
+  portfolios(
+    walletId: $walletId
+    portfolioIds: $portfolioIds
+    productType: $productType
+  ) {
+    id
+    totalValue {
+      amount
+      currency {
+        isoCode
+        symbol
+      }
+    }
+  }
+}
