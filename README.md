@@ -98,6 +98,7 @@ verglichen. Die Referenzabfragen stehen unter
 Die zusätzlich direkt an der API geprüfte Abfrage für die Anlageklassen steht
 unter `tests/fixtures/api_asset_classes.graphql` und enthält ebenfalls keine Kundendaten.
 Die Tests ersetzen keine vollständige Prüfung mit einem echten Konto.
+Aufbau, abgedeckte Fälle und Prüfgrenzen stehen in [tests/README.md](tests/README.md).
 
 ```sh
 python3 -m venv .venv
@@ -107,3 +108,9 @@ python3 -m venv .venv
 
 Die MoneyMoney-API einschließlich Installation und Signaturprüfung ist unter
 [MoneyMoney Web Banking API](https://moneymoney.app/api/webbanking/) dokumentiert.
+
+### Implementierungsdokumentation
+
+[IMPLEMENTATION.md](IMPLEMENTATION.md) beschreibt Anmeldung und Sitzungen,
+die Whitebox-GraphQL-Abfragen, Datenzuordnung, Textaufbereitung, Caches,
+Fehlerbehandlung und die beim Umbau gewonnenen API-Erkenntnisse.
