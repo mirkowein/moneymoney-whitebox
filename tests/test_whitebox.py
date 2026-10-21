@@ -245,6 +245,53 @@ def test_depot_uses_signed_booked_value_instead_of_quantity_times_price(h):
     assert "IE00TEST00001" in result["transactions"][0]["purpose"]
 
 
+@pytest.mark.parametrize("quantity,amount", [("-0.906498", 4.45), ("0.906498", -4.45)])
+def test_depot_text_restores_class_shares_approximate_price_isin_and_tan(h, quantity, amount):
+    h.responses["MoneyMoneyAssetClasses"] = asset_class_page([
+        {"isin": "IE00TEST00001", "className": "Globale Unternehmensanleihen"}])
+    h.portfolio_response("MoneyMoneyDepot", depotAccount={"currentValue": money(123)},
+        depotTransactions=[dict(date="2026-09-20", description="", number="TEST-123",
+            isin="IE00TEST00001", productName="Test ETF", quantity=quantity, value=money(amount))])
+    row = h.refresh("DEPOT")["transactions"][0]
+    assert row["purpose"] == (
+        "Globale Unternehmensanleihen\nTest ETF\n"
+        f"Anteile {quantity} Kurs ca. 4.909\nISIN IE00TEST00001 TAN TEST-123")
+    assert row["amount"] == amount
+
+
+@pytest.mark.parametrize("quantity,amount", [(0, 10), (None, 10), ("invalid", 10), (2, 0)])
+def test_depot_text_does_not_invent_price_for_missing_or_zero_trade_values(h, quantity, amount):
+    h.portfolio_response("MoneyMoneyDepot", depotAccount={"currentValue": money(123)},
+        depotTransactions=[dict(date="2026-09-20", description="Umbuchung", number="TEST-123",
+            isin="IE00TEST00001", productName="Test ETF", quantity=quantity, value=money(amount))])
+    row = h.refresh("DEPOT")["transactions"][0]
+    assert "Kurs" not in row["purpose"]
+    assert row["purpose"].startswith("Umbuchung\nTest ETF\n")
+    assert row["purpose"].endswith("ISIN IE00TEST00001 TAN TEST-123")
+
+
+def test_depot_text_keeps_transactions_when_optional_class_metadata_fails(h):
+    h.metadata_error = True
+    h.portfolio_response("MoneyMoneyDepot", depotAccount={"currentValue": money(123)},
+        depotTransactions=[dict(date="2026-09-20", description="Kauf", number="TEST-123",
+            isin="IE00TEST00001", productName="Test ETF", quantity="2", value=money(-20))])
+    row = h.refresh("DEPOT")["transactions"][0]
+    assert row["purpose"] == "Kauf\nTest ETF\nAnteile 2 Kurs ca. 10\nISIN IE00TEST00001 TAN TEST-123"
+    assert row["amount"] == -20
+
+
+def test_depot_and_holdings_share_cached_class_metadata(h):
+    h.responses["MoneyMoneyAssetClasses"] = asset_class_page([
+        {"isin": "IE00TEST00001", "className": "Aktien Schwellenländer"}])
+    asset_response(h)
+    h.portfolio_response("MoneyMoneyDepot", depotAccount={"currentValue": money(123)},
+        depotTransactions=[dict(date="2026-09-20", description="Kauf", number="TEST-123",
+            isin="IE00TEST00001", productName="Test ETF", quantity="2", value=money(-20))])
+    assert "Aktien Schwellenländer" in h.refresh("DEPOT")["transactions"][0]["purpose"]
+    assert h.refresh("PORTFOLIO")["securities"][0]["name"].endswith(" (Aktien Schwellenländer)")
+    assert sum(r.get("query", {}).get("operationName") == "MoneyMoneyAssetClasses" for r in h.requests) == 1
+
+
 def test_assets_preserve_fractional_quantity_valuation_and_purchase_price(h):
     h.responses["MoneyMoneyAssets"] = {"assets": {"securityData": [dict(
         isin="IE00TEST00001", name="Test ETF", shares="1.2345", marketPrice=100,

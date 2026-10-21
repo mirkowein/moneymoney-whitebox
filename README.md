@@ -23,7 +23,7 @@ Zusammen als **Kontogruppe** mit *"Kontostand in Saldenleiste anzeigen"* zusamme
 ![MoneyMoney screenshot Kontogruppe](Screenshots/Kontogruppe.png)
 
 
-## Neue Whitebox-Oberfläche (Version 1.17)
+## Neue Whitebox-Oberfläche (Version 1.18)
 
 Die Erweiterung nutzt die GraphQL-Schnittstelle der neuen Whitebox-Oberfläche.
 Die Anmeldung erfolgt weiterhin über das vorhandene Login-Formular; anschließend
@@ -49,6 +49,16 @@ Wertpapiernamen enthalten wieder die Whitebox-Anlageklasse in Klammern, zum Beis
 Die Abfrage wurde mit der aktuellen API geprüft und berücksichtigt weitere
 Ergebnisseiten. Falls diese optionalen Metadaten nicht verfügbar sind, bleibt der
 einfache Wertpapiername erhalten. Bestandsdaten und Metadaten kommen aus GraphQL.
+
+Depotbuchungen enthalten wieder Anlageklasse, Wertpapiername, `Anteile`, Kurs,
+`ISIN` und `TAN` in der bisherigen Reihenfolge. Die Anlageklasse wird ergänzt,
+soweit sie über die aktuellen Depotmetadaten zugeordnet werden kann. Ein exakter
+historischer Ausführungskurs fehlt in der neuen Umsatzabfrage. Deshalb wird der
+aus Buchungsbetrag und Stückzahl berechnete Näherungswert als `Kurs ca.` angezeigt
+(auf drei Nachkommastellen gerundet). Er kann durch Cent-Rundung und im
+Buchungsbetrag enthaltene Kosten vom Ausführungskurs abweichen. Fehlende oder
+nullwertige Stückzahlen/Beträge erhalten keinen berechneten Kurs. Der importierte
+Buchungsbetrag bleibt unverändert.
 
 ### Installation einer angepassten Version
 

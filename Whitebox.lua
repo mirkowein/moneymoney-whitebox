@@ -25,13 +25,14 @@
 -- 1.16 (2026-10-21, unsigned version): Replace retired HTML/REST
 -- scraping with the GraphQL queries used by Whitebox frontend 2.10.1.
 -- 1.17 (2026-10-21): Restore asset-class suffixes in security names.
+-- 1.18 (2026-10-21): Restore depot transaction text and label derived prices.
 -- KONTO + DEPOT or KONTO + PORTFOLIO represent one goal's assets.
 -- PERFORMANCE contains information only and contributes no balance.
 
 local BASE_URL = "https://inside.whitebox.eu"
 
 WebBanking {
-    version = 1.17,
+    version = 1.18,
     url = BASE_URL .. "/login",
     services = {"Whitebox"},
     description = "Whitebox"
@@ -330,7 +331,7 @@ local function PortfolioAssetClasses(goal)
         return result
     end)
     if not ok or type(classes) ~= "table" then
-        print("Whitebox: Anlageklassen nicht verfügbar; Wertpapiernamen werden ohne Zusatz übernommen.")
+        print("Whitebox: Anlageklassen nicht verfügbar; Namen und Buchungstexte werden ohne Zusatz übernommen.")
         assetClassesByGoal = {}
     else
         assetClassesByGoal = classes
@@ -346,7 +347,19 @@ local function SecurityName(name, className)
     return name .. suffix
 end
 
-local function ReadTransactions(rows, isDepot)
+local function ApproximatePrice(amount, quantity)
+    -- The new transaction API supplies a booked value rounded to cents, but
+    -- no execution price. Never present their quotient as the original price.
+    local shares = (type(quantity) == "number" or type(quantity) == "string") and tonumber(quantity) or nil
+    if not shares or shares == 0 or shares ~= shares or math.abs(shares) == math.huge then return nil end
+    local price = math.abs(amount / shares)
+    if price == 0 or price ~= price or price == math.huge then return nil end
+    local formatted = string.format("%.3f", price):gsub("0+$", ""):gsub("%.$", "")
+    if tonumber(formatted) == 0 then formatted = string.format("%.6g", price) end
+    return formatted
+end
+
+local function ReadTransactions(rows, isDepot, classes)
     RequireTable(rows, isDepot and "depotTransactions" or "cashTransactions")
     local transactions = {}
     for _, row in ipairs(rows) do
@@ -354,11 +367,26 @@ local function ReadTransactions(rows, isDepot)
         local amount, currency = Amount(row.value, "Umsatzbetrag")
         local purpose = Text(row.description)
         if isDepot then
-            if Text(row.productName) ~= "" then purpose = purpose .. "\n" .. row.productName end
-            if Text(row.isin) ~= "" then purpose = purpose .. "\nISIN " .. row.isin end
-            if row.quantity ~= nil then purpose = purpose .. "\nAnteile " .. Text(row.quantity) end
+            local lines = {}
+            if purpose ~= "" then table.insert(lines, purpose) end
+            local className = classes[Text(row.isin)]
+            if type(className) == "string" and className ~= "" then table.insert(lines, className) end
+            if Text(row.productName) ~= "" then table.insert(lines, Text(row.productName)) end
+            if Text(row.quantity) ~= "" then
+                local shares = "Anteile " .. Text(row.quantity)
+                local price = ApproximatePrice(amount, row.quantity)
+                if price then shares = shares .. " Kurs ca. " .. price end
+                table.insert(lines, shares)
+            end
+            local reference = Text(row.isin) ~= "" and ("ISIN " .. Text(row.isin)) or ""
+            if Text(row.number) ~= "" then
+                reference = reference .. (reference ~= "" and " " or "") .. "TAN " .. Text(row.number)
+            end
+            if reference ~= "" then table.insert(lines, reference) end
+            purpose = table.concat(lines, "\n")
+        elseif Text(row.number) ~= "" then
+            purpose = purpose .. "\n" .. Text(row.number)
         end
-        if Text(row.number) ~= "" then purpose = purpose .. "\n" .. Text(row.number) end
         table.insert(transactions, {
             bookingDate = IsoDateStr2Timestamp(row.date),
             purpose = purpose, amount = amount, currency = currency
@@ -439,8 +467,10 @@ function RefreshAccount(account, since)
     local balance = Amount(money, "Kontostand", account.currency or "EUR")
     -- Use the signed transaction value provided by Whitebox, never shares * price.
     local rows
-    if isDepot then rows = portfolio.depotTransactions else rows = portfolio.cashTransactions end
-    return {balance = balance, transactions = ReadTransactions(rows, isDepot)}
+    if isDepot then rows = RequireTable(portfolio.depotTransactions, "depotTransactions")
+    else rows = portfolio.cashTransactions end
+    local classes = isDepot and #rows > 0 and PortfolioAssetClasses(goal) or {}
+    return {balance = balance, transactions = ReadTransactions(rows, isDepot, classes)}
 end
 
 function EndSession()
