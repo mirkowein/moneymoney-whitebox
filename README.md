@@ -23,7 +23,7 @@ Zusammen als **Kontogruppe** mit *"Kontostand in Saldenleiste anzeigen"* zusamme
 ![MoneyMoney screenshot Kontogruppe](Screenshots/Kontogruppe.png)
 
 
-## Neue Whitebox-Oberfläche (Version 1.16)
+## Neue Whitebox-Oberfläche (Version 1.17)
 
 Die Erweiterung nutzt die GraphQL-Schnittstelle der neuen Whitebox-Oberfläche.
 Die Anmeldung erfolgt weiterhin über das vorhandene Login-Formular; anschließend
@@ -43,6 +43,13 @@ ein Buchungsdatum; ein gesondertes Wertstellungsdatum wird nicht ergänzt.
 Noch nicht verfügbare Renditen werden als „nicht verfügbar“ angezeigt.
 Die Zeitangabe von Wertpapierpositionen entspricht wie bisher dem Abrufzeitpunkt.
 
+Wertpapiernamen enthalten wieder die Whitebox-Anlageklasse in Klammern, zum Beispiel
+`AMUNDI IS MSCI EMERGING M (Aktien Schwellenländer)`. Dafür wird `className` aus
+`wallet.goals.nodes.portfolio.depotAssets` über Anlagenkennung und ISIN zugeordnet.
+Die Abfrage wurde mit der aktuellen API geprüft und berücksichtigt weitere
+Ergebnisseiten. Falls diese optionalen Metadaten nicht verfügbar sind, bleibt der
+einfache Wertpapiername erhalten. Bestandsdaten und Metadaten kommen aus GraphQL.
+
 ### Installation einer angepassten Version
 
 1. In MoneyMoney **Hilfe → Zeige Datenbank im Finder** wählen und den Ordner
@@ -54,7 +61,7 @@ Die Zeitangabe von Wertpapierpositionen entspricht wie bisher dem Abrufzeitpunkt
    überprüfen** ausgeschaltet sein. Für die reguläre Veröffentlichung muss die
    Erweiterung durch MoneyMoney neu signiert werden.
 4. Den Zugang neu einrichten oder **Nach neuen Konten suchen** ausführen.
-   Im Protokoll muss **Whitebox.lua version 1.16** erscheinen.
+   Im Protokoll muss **Whitebox.lua version 1.17** erscheinen.
 
 Beim ersten Abruf Cashbestand, Depotwert und einzelne Käufe/Verkäufe mit Whitebox
 vergleichen. Bei vorhandenen Buchungen können geänderte Buchungstexte und Beträge
@@ -68,6 +75,8 @@ künstlichen Daten aus. Zusätzlich werden die abgefragten Felder, Argumentnamen
 Variablentypen mit den veröffentlichten Abfragen der Whitebox-Oberfläche 2.10.1
 verglichen. Die Referenzabfragen stehen unter
 `tests/fixtures/frontend_queries.graphql`; sie enthalten keine Kundendaten.
+Die zusätzlich direkt an der API geprüfte Abfrage für die Anlageklassen steht
+unter `tests/fixtures/api_asset_classes.graphql` und enthält ebenfalls keine Kundendaten.
 Die Tests ersetzen keine vollständige Prüfung mit einem echten Konto.
 
 ```sh

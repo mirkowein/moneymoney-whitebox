@@ -30,6 +30,11 @@ def goal(slug="anlage-mit_suffix-42", **overrides):
                 portfolioId="portfolio-456", **overrides)
 
 
+def asset_class_page(rows, slug="anlage-mit_suffix-42", more=False, cursor=None):
+    return {"wallet": {"goals": {"nodes": [{"slug": slug, "portfolio": {"depotAssets": rows}}],
+                               "pageInfo": {"hasNextPage": more, "endCursor": cursor}}}}
+
+
 def to_python(value):
     if lua_type(value) != "table":
         return value
@@ -75,12 +80,16 @@ class Harness:
     def __init__(self):
         self.lua = LuaRuntime(unpack_returned_tuples=True)
         self.requests = []
-        self.responses = {"MoneyMoneyGoals": {"wealthGoals": [goal()]}}
+        self.responses = {"MoneyMoneyGoals": {"wealthGoals": [goal()]},
+                          "MoneyMoneyAssetClasses": asset_class_page([])}
         self.login_result = "<html><div>Ladegerüst ohne Konten</div></html>"
         self.login_url = f"{BASE}/w/{WALLET}/wealth"
         self.session = {"authToken": "synthetic-access-token", "csrfToken": "synthetic-csrf"}
         self.raw_response = None
         self.graphql_errors = None
+        self.asset_class_pages = {}
+        self.metadata_content = None
+        self.metadata_error = False
         self.base_url = BASE
         runtime = self.lua
 
@@ -144,6 +153,13 @@ class Harness:
         assert query["variables"]["walletId"] == WALLET
         if "productType:" in query["query"]:
             assert "productType: WEALTH" in query["query"]
+        if query["operationName"] == "MoneyMoneyAssetClasses":
+            if self.metadata_error:
+                raise RuntimeError("Synthetic unavailable metadata query")
+            if self.metadata_content is not None:
+                return self.metadata_content
+            if self.asset_class_pages:
+                return json.dumps({"data": self.asset_class_pages[query["variables"].get("after")]})
         if self.raw_response is not None:
             return self.raw_response
         response = {"data": copy.deepcopy(self.responses[query["operationName"]])}
@@ -244,6 +260,107 @@ def test_missing_optional_prices_are_omitted(h):
         averagePurchasePrice=None, totalValue=money(100))]}}
     security = h.refresh("PORTFOLIO")["securities"][0]
     assert "purchasePrice" not in security and "price" not in security
+
+
+def asset_response(h, name="AMUNDI IS MSCI EMERGING M"):
+    h.responses["MoneyMoneyAssets"] = {"assets": {"securityData": [dict(
+        isin="IE00TEST00001", name=name, shares="1.2345", marketPrice=100,
+        averagePurchasePrice=90, totalValue=money(123.45))]}}
+
+
+def test_security_name_restores_whitebox_asset_class_by_isin(h):
+    asset_response(h)
+    h.responses["MoneyMoneyAssetClasses"] = asset_class_page([
+        {"isin": "IE00OTHER0001", "className": "Andere Anlageklasse"},
+        {"className": "Cash"},
+        {"isin": "IE00TEST00001", "className": "Aktien Schwellenländer"},
+    ])
+    security = h.refresh("PORTFOLIO")["securities"][0]
+    assert security["name"] == "AMUNDI IS MSCI EMERGING M (Aktien Schwellenländer)"
+    assert (security["quantity"], security["amount"], security["isin"]) == (1.2345, 123.45, "IE00TEST00001")
+    assert h.requests[-1]["query"]["operationName"] == "MoneyMoneyAssetClasses"
+
+
+@pytest.mark.parametrize("class_name", [None, "", "  "])
+def test_missing_asset_class_keeps_name_without_empty_parentheses(h, class_name):
+    asset_response(h)
+    h.responses["MoneyMoneyAssetClasses"] = asset_class_page([
+        {"isin": "IE00TEST00001", "className": class_name}])
+    assert h.refresh("PORTFOLIO")["securities"][0]["name"] == "AMUNDI IS MSCI EMERGING M"
+
+
+def test_asset_class_suffix_is_not_duplicated(h):
+    asset_response(h, "AMUNDI IS MSCI EMERGING M (Aktien Schwellenländer)")
+    h.responses["MoneyMoneyAssetClasses"] = asset_class_page([
+        {"isin": "IE00TEST00001", "className": "  Aktien Schwellenländer  "}])
+    assert h.refresh("PORTFOLIO")["securities"][0]["name"] == "AMUNDI IS MSCI EMERGING M (Aktien Schwellenländer)"
+
+
+@pytest.mark.parametrize("metadata", ["<html>Login</html>", '{"data":{}}', '{"errors":[{"message":"Unavailable"}]}'])
+def test_unavailable_metadata_does_not_block_graphql_holdings(h, metadata):
+    asset_response(h)
+    h.metadata_content = metadata
+    security = h.refresh("PORTFOLIO")["securities"][0]
+    assert security["name"] == "AMUNDI IS MSCI EMERGING M"
+    assert security["amount"] == 123.45
+
+
+def test_failed_metadata_request_does_not_block_graphql_holdings(h):
+    asset_response(h)
+    h.metadata_error = True
+    assert h.refresh("PORTFOLIO")["securities"][0]["amount"] == 123.45
+
+
+def test_ambiguous_asset_class_is_not_guessed(h):
+    asset_response(h)
+    h.responses["MoneyMoneyAssetClasses"] = asset_class_page([
+        {"isin": "IE00TEST00001", "className": "Aktien Schwellenländer"},
+        {"isin": "IE00TEST00001", "className": "Andere Anlageklasse"},
+        {"isin": "IE00TEST00001", "className": "Aktien Schwellenländer"}])
+    assert h.refresh("PORTFOLIO")["securities"][0]["name"] == "AMUNDI IS MSCI EMERGING M"
+
+
+def test_asset_classes_are_scoped_by_goal_and_isin(h):
+    asset_response(h)
+    h.responses["MoneyMoneyAssetClasses"] = asset_class_page([
+        {"isin": "IE00TEST00001", "className": "Falsche Anlage"}], slug="anderes-ziel")
+    assert h.refresh("PORTFOLIO")["securities"][0]["name"] == "AMUNDI IS MSCI EMERGING M"
+
+
+def test_empty_holdings_do_not_fetch_asset_class_metadata(h):
+    h.responses["MoneyMoneyAssets"] = {"assets": {"securityData": []}}
+    h.refresh("PORTFOLIO")
+    assert not any(request.get("query", {}).get("operationName") == "MoneyMoneyAssetClasses" for request in h.requests)
+
+
+def test_asset_class_metadata_follows_all_pages_and_is_cached(h):
+    asset_response(h)
+    h.asset_class_pages = {
+        None: asset_class_page([], slug="erstes-ziel", more=True, cursor="page-two"),
+        "page-two": asset_class_page([{"isin": "IE00TEST00001", "className": "Aktien Schwellenländer"}]),
+    }
+    for _ in range(2):
+        assert h.refresh("PORTFOLIO")["securities"][0]["name"].endswith(" (Aktien Schwellenländer)")
+    requests = [r["query"] for r in h.requests if r.get("query", {}).get("operationName") == "MoneyMoneyAssetClasses"]
+    assert len(requests) == 2
+    assert requests[1]["variables"]["after"] == "page-two"
+
+
+def test_repeated_metadata_cursor_does_not_loop_or_import_partial_classes(h):
+    asset_response(h)
+    page = asset_class_page([{"isin": "IE00TEST00001", "className": "Unvollständig"}], more=True, cursor="same")
+    h.asset_class_pages = {None: page, "same": page}
+    assert h.refresh("PORTFOLIO")["securities"][0]["name"] == "AMUNDI IS MSCI EMERGING M"
+
+
+def test_metadata_cache_is_reset_on_new_session(h):
+    asset_response(h)
+    h.responses["MoneyMoneyAssetClasses"] = asset_class_page([{"isin": "IE00TEST00001", "className": "Erste Klasse"}])
+    assert h.refresh("PORTFOLIO")["securities"][0]["name"].endswith(" (Erste Klasse)")
+    h.lua.globals().EndSession()
+    assert h.login() is None
+    h.responses["MoneyMoneyAssetClasses"] = asset_class_page([{"isin": "IE00TEST00001", "className": "Neue Klasse"}])
+    assert h.refresh("PORTFOLIO")["securities"][0]["name"].endswith(" (Neue Klasse)")
 
 
 def test_performance_percentage_is_not_multiplied_and_information_has_zero_value(h):
@@ -354,7 +471,8 @@ def test_all_query_fields_arguments_and_variable_types_exist_in_public_frontend(
 
     This deliberately cannot establish server authorization or response values.
     """
-    reference = parse((ROOT / "tests/fixtures/frontend_queries.graphql").read_text())
+    reference = parse((ROOT / "tests/fixtures/frontend_queries.graphql").read_text() + "\n" +
+                      (ROOT / "tests/fixtures/api_asset_classes.graphql").read_text())
     paths, types = {}, {}
 
     def fields(selection, prefix=()):
@@ -373,7 +491,7 @@ def test_all_query_fields_arguments_and_variable_types_exist_in_public_frontend(
 
     source = (ROOT / "Whitebox.lua").read_text()
     queries = re.findall(r"local (\w+_QUERY) = \[\[(.*?)\]\]", source, re.S)
-    assert len(queries) == 5
+    assert len(queries) == 6
     for name, query in queries:
         operation, = parse(query).definitions
         for variable in operation.variable_definitions:

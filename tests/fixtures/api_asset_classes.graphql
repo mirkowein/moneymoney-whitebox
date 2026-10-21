@@ -1,0 +1,22 @@
+# Read-only query validated against Whitebox's live GraphQL API, 2026-10-21.
+# DepotAsset.isin and DepotAsset.className confirmed through schema introspection.
+# This is a query reference, not a saved customer response.
+query MoneyMoneyAssetClasses($walletId: ID!, $after: String) {
+  wallet(id: $walletId) {
+    goals(first: 100, after: $after) {
+      nodes {
+        slug
+        portfolio {
+          depotAssets {
+            isin
+            className
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}

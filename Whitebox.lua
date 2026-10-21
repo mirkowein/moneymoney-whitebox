@@ -24,13 +24,14 @@
 --
 -- 1.16 (2026-10-21, unsigned version): Replace retired HTML/REST
 -- scraping with the GraphQL queries used by Whitebox frontend 2.10.1.
+-- 1.17 (2026-10-21): Restore asset-class suffixes in security names.
 -- KONTO + DEPOT or KONTO + PORTFOLIO represent one goal's assets.
 -- PERFORMANCE contains information only and contributes no balance.
 
 local BASE_URL = "https://inside.whitebox.eu"
 
 WebBanking {
-    version = 1.16,
+    version = 1.17,
     url = BASE_URL .. "/login",
     services = {"Whitebox"},
     description = "Whitebox"
@@ -38,6 +39,7 @@ WebBanking {
 
 local connection, authToken, csrfToken, walletId
 local goals, goalsByKey
+local assetClassesByGoal
 
 -- Field names and argument types come from the public frontend's generated
 -- queries. Request only read operations; all responses must be complete.
@@ -80,6 +82,22 @@ query MoneyMoneyAssets($walletId: ID!, $portfolioIds: [ID!]) {
     securityData {
       isin name shares marketPrice averagePurchasePrice
       totalValue { amount currency { isoCode } }
+    }
+  }
+}
+]]
+
+-- Verified against the live API: the detailed DepotAsset type retains the
+-- allocation class that is absent from assets.securityData.
+local ASSET_CLASSES_QUERY = [[
+query MoneyMoneyAssetClasses($walletId: ID!, $after: String) {
+  wallet(id: $walletId) {
+    goals(first: 100, after: $after) {
+      nodes {
+        slug
+        portfolio { depotAssets { isin className } }
+      }
+      pageInfo { hasNextPage endCursor }
     }
   }
 }
@@ -192,6 +210,7 @@ end
 
 function InitializeSession(protocol, bankCode, username, username2, password, username3)
     authToken, csrfToken, walletId, goals, goalsByKey = nil, nil, nil, nil, nil
+    assetClassesByGoal = nil
     connection = Connection()
     connection.language = "de-DE"
 
@@ -266,6 +285,67 @@ local function OnePortfolio(data, portfolioId)
     return portfolios[1]
 end
 
+local function PortfolioAssetClasses(goal)
+    -- GraphQL's securityData.type is ETF/FUND/etc., not Whitebox's more
+    -- specific allocation class (e.g. "Aktien Schwellenländer"). Detailed
+    -- GraphQL DepotAsset metadata contains the original className instead.
+    -- Treat it as optional display metadata, matched by goal slug and ISIN.
+    if type(goal.slug) ~= "string" or goal.slug == "" then return {} end
+    if assetClassesByGoal then return assetClassesByGoal[goal.slug] or {} end
+    local ok, classes = pcall(function()
+        local result, after, seenCursors = {}, nil, {}
+        repeat
+            local data = GraphQL("MoneyMoneyAssetClasses", ASSET_CLASSES_QUERY, {walletId = walletId, after = after})
+            local page = RequireTable(RequireTable(data.wallet, "wallet").goals, "wallet.goals")
+            for _, entry in ipairs(RequireTable(page.nodes, "wallet.goals.nodes")) do
+                RequireTable(entry, "wallet.goals.nodes[]")
+                if type(entry.slug) == "string" and entry.slug ~= "" and entry.portfolio ~= nil then
+                    local portfolio = RequireTable(entry.portfolio, "Anlageklassen-Depot")
+                    local rows = portfolio.depotAssets
+                    if rows ~= nil then
+                        RequireTable(rows, "depotAssets")
+                        local byIsin = result[entry.slug] or {}
+                        result[entry.slug] = byIsin
+                        for _, row in ipairs(rows) do
+                            if type(row) == "table" and type(row.isin) == "string" and row.isin ~= ""
+                                and type(row.className) == "string" then
+                                local className = row.className:match("^%s*(.-)%s*$")
+                                if className ~= "" then
+                                    -- Never guess between conflicting classifications.
+                                    if byIsin[row.isin] == nil then byIsin[row.isin] = className
+                                    elseif byIsin[row.isin] ~= className then byIsin[row.isin] = false end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            local info = RequireTable(page.pageInfo, "wallet.goals.pageInfo")
+            if info.hasNextPage == false then break end
+            if info.hasNextPage ~= true or type(info.endCursor) ~= "string" or info.endCursor == ""
+                or seenCursors[info.endCursor] then Fail("Ungültige Seitennavigation der Anlageklassen.") end
+            after = info.endCursor
+            seenCursors[after] = true
+        until false
+        return result
+    end)
+    if not ok or type(classes) ~= "table" then
+        print("Whitebox: Anlageklassen nicht verfügbar; Wertpapiernamen werden ohne Zusatz übernommen.")
+        assetClassesByGoal = {}
+    else
+        assetClassesByGoal = classes
+    end
+    return assetClassesByGoal[goal.slug] or {}
+end
+
+local function SecurityName(name, className)
+    name = Text(name)
+    if type(className) ~= "string" or className == "" then return name end
+    local suffix = " (" .. className .. ")"
+    if name:sub(-#suffix) == suffix then return name end
+    return name .. suffix
+end
+
 local function ReadTransactions(rows, isDepot)
     RequireTable(rows, isDepot and "depotTransactions" or "cashTransactions")
     local transactions = {}
@@ -323,13 +403,14 @@ function RefreshAccount(account, since)
     if prefix == "PORTFOLIO" then
         local data = GraphQL("MoneyMoneyAssets", ASSETS_QUERY, variables)
         local rows = RequireTable(RequireTable(data.assets, "assets").securityData, "assets.securityData")
+        local classes = #rows > 0 and PortfolioAssetClasses(goal) or {}
         local securities = {}
         for _, row in ipairs(rows) do
             RequireTable(row, "Depotposition")
             if Text(row.isin) == "" then Fail("ISIN einer Depotposition fehlt.") end
             local amount = Amount(row.totalValue, "Depotposition", account.currency or "EUR")
             local security = {
-                name = Text(row.name), isin = row.isin,
+                name = SecurityName(row.name, classes[row.isin]), isin = row.isin,
                 quantity = Number(row.shares, "shares"), amount = amount,
                 tradeTimestamp = Now()
             }
@@ -367,6 +448,7 @@ function EndSession()
     local headers = {Accept = "application/json", ["X-Requested-With"] = "XMLHttpRequest"}
     if type(csrfToken) == "string" and csrfToken ~= "" then headers["X-CSRF-Token"] = csrfToken end
     authToken, csrfToken, walletId, goals, goalsByKey = nil, nil, nil, nil, nil
+    assetClassesByGoal = nil
     -- Preserve Whitebox's Rails logout endpoint and method override.
     connection:request("POST", BASE_URL .. "/logout", "_method=delete",
         "application/x-www-form-urlencoded", headers)
