@@ -236,14 +236,33 @@ def test_cash_transactions_keep_sign_currency_reference_and_newest_first(h):
 
 
 @pytest.mark.parametrize("action", ["Kauf", "Verkauf"])
-def test_cash_order_number_starts_description_on_the_same_line(h, action):
-    description = f"Ausführung Order {action} IE00TEST00001"
+@pytest.mark.parametrize("separator", [" ", "\n"])
+@pytest.mark.parametrize("order_word", ["Order", "ORDER", "order"])
+def test_cash_order_title_and_both_references_are_separate(h, action, separator, order_word):
+    title = f"Ausführung Order {action} IE00TEST0001"
+    description = f"Ausführung {order_word}{separator}{action} IE00TEST0001{separator}987654321"
     h.portfolio_response("MoneyMoneyCash", cashAccount={"balance": money(100)},
         cashTransactions=[dict(date="2026-09-20", description=description,
             number="123456789", value=money(12.34))])
     row = h.refresh("KONTO")["transactions"][0]
-    assert row["purpose"] == "123456789 " + description
+    assert row["name"] == title
+    assert row["purpose"] == "987654321 123456789"
     assert row["amount"] == 12.34
+
+
+@pytest.mark.parametrize("embedded_reference,number,expected", [
+    ("", "123456789", "123456789"),
+    (" 123456789", "123456789", "123456789"),
+    (" 987654321", None, "987654321"),
+])
+def test_cash_order_references_handle_missing_and_repeated_numbers(h, embedded_reference, number, expected):
+    title = "Ausführung Order Verkauf IE00TEST0001"
+    h.portfolio_response("MoneyMoneyCash", cashAccount={"balance": money(100)},
+        cashTransactions=[dict(date="2026-09-20", description=title + embedded_reference,
+            number=number, value=money(12.34))])
+    row = h.refresh("KONTO")["transactions"][0]
+    assert row["name"] == title
+    assert row["purpose"] == expected
 
 
 def test_cash_reference_without_description_is_labelled(h):
@@ -436,6 +455,17 @@ def test_performance_percentage_is_not_multiplied_and_information_has_zero_value
     assert securities[1]["name"].endswith("10.25 %")
     assert securities[2]["name"].endswith("nicht verfügbar")
     assert sum(s["amount"] for s in securities) == 0
+
+
+@pytest.mark.parametrize("value", ["123.45", "-12.34", "0.00"])
+def test_performance_keeps_legacy_capital_change_label_and_identifier(h, value):
+    h.portfolio_response("MoneyMoneyPerformance", performanceReport=dict(
+        endAssets=money(1100), returnInEuro=money(value), moneyWeightedReturnInPercentage=10.25,
+        moneyWeightedReturnAnnualizedInPercentage=None))
+    security = h.refresh("PERFORMANCE")["securities"][3]
+    assert security["name"] == f"Erfolgsrelevante Kapitalveränderungen: {value} €"
+    assert security["isin"] == "Performance sum_of_erfolgsrelevante_kapitalveraenderungen"
+    assert security["quantity"] == security["price"] == security["amount"] == 0
 
 
 @pytest.mark.parametrize("prefix,operation,fields", [

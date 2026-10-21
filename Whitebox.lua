@@ -24,7 +24,7 @@
 --
 -- 1.16 (2026-10-21, unsigned version): Replace retired HTML/REST
 -- scraping with GraphQL, including asset-class names and transaction text.
--- Keep cash references at the start of the description on the same line.
+-- Keep cash order titles separate from their reference numbers.
 -- KONTO + DEPOT or KONTO + PORTFOLIO represent one goal's assets.
 -- PERFORMANCE contains information only and contributes no balance.
 
@@ -358,6 +358,23 @@ local function ApproximatePrice(amount, quantity)
     return formatted
 end
 
+local function CashOrderText(description, number)
+    -- Whitebox splits the order description across lines and embeds one
+    -- reference in it. MoneyMoney needs an explicit name/purpose separation.
+    local normalized = Text(description):gsub("%s+", " "):match("^%s*(.-)%s*$")
+    local title, reference = normalized:match("^(Ausführung [Oo][Rr][Dd][Ee][Rr] .-) (%d+)$")
+    title = title or normalized
+    local action, isin = title:match("^Ausführung [Oo][Rr][Dd][Ee][Rr] (%S+) (%u%u[%u%d]+)$")
+    action = action and ({kauf = "Kauf", verkauf = "Verkauf"})[action:lower()]
+    if not action or not isin or #isin ~= 12 then return nil end
+    title = "Ausführung Order " .. action .. " " .. isin
+    local references = {}
+    if reference then table.insert(references, reference) end
+    number = Text(number)
+    if number ~= "" and number ~= reference then table.insert(references, number) end
+    return title, table.concat(references, " ")
+end
+
 local function ReadTransactions(rows, isDepot, classes)
     RequireTable(rows, isDepot and "depotTransactions" or "cashTransactions")
     local transactions = {}
@@ -365,6 +382,7 @@ local function ReadTransactions(rows, isDepot, classes)
         RequireTable(row, "Umsatz")
         local amount, currency = Amount(row.value, "Umsatzbetrag")
         local purpose = Text(row.description)
+        local name
         if isDepot then
             local lines = {}
             if purpose ~= "" then table.insert(lines, purpose) end
@@ -383,15 +401,19 @@ local function ReadTransactions(rows, isDepot, classes)
             end
             if reference ~= "" then table.insert(lines, reference) end
             purpose = table.concat(lines, "\n")
-        elseif Text(row.number) ~= "" then
-            -- A bare numeric reference on its own line may be interpreted as
-            -- a telephone number. Keep it with the cash booking description.
-            purpose = purpose ~= "" and (Text(row.number) .. " " .. purpose)
-                or ("Referenz " .. Text(row.number))
+        else
+            local orderPurpose
+            name, orderPurpose = CashOrderText(purpose, row.number)
+            if name then
+                purpose = orderPurpose
+            elseif Text(row.number) ~= "" then
+                purpose = purpose ~= "" and (Text(row.number) .. " " .. purpose)
+                    or ("Referenz " .. Text(row.number))
+            end
         end
         table.insert(transactions, {
             bookingDate = IsoDateStr2Timestamp(row.date),
-            purpose = purpose, amount = amount, currency = currency
+            name = name, purpose = purpose, amount = amount, currency = currency
         })
     end
     table.sort(transactions, function(a, b) return a.bookingDate > b.bookingDate end)
@@ -414,7 +436,10 @@ local function PerformanceSecurities(report)
     -- These GraphQL fields already contain percentages (no multiplication by 100).
     Add("mwr", "Geldgewichtete Rendite", report.moneyWeightedReturnInPercentage, " %")
     Add("yearly_mwr", "Geldgewichtete Rendite annualisiert", report.moneyWeightedReturnAnnualizedInPercentage, " %")
-    Add("return_in_euro", "Wertentwicklung nach Kosten und Steuern", Amount(report.returnInEuro, "returnInEuro", "EUR"), " €")
+    -- Retain the original display label and identifier. The current API's
+    -- net monetary return agrees with the legacy GraphQL gains plus costs.
+    Add("sum_of_erfolgsrelevante_kapitalveraenderungen", "Erfolgsrelevante Kapitalveränderungen",
+        Amount(report.returnInEuro, "returnInEuro", "EUR"), " €")
     return {securities = result}
 end
 

@@ -7,7 +7,7 @@ Es werden jeweils 4 Accounts für jedes aktive Ziel angelegt:
 - KONTO = Umsätze Cash
 - DEPOT = Umsätze im Depot
 - PORTFOLIO = Bestand ETF 
-- PERFORMANCE = Nur Informationen: Wertentwicklung nach Kosten und Steuern, Geldgewichtete Rendite annualisiert, Geldgewichtete Rendite, Vermögensstand
+- PERFORMANCE = Nur Informationen: Erfolgsrelevante Kapitalveränderungen, Geldgewichtete Rendite annualisiert, Geldgewichtete Rendite, Vermögensstand
 
 Es macht Sinn als Kontogruppe zu gruppieren. Also KONTO und DEPOT hat in der Summe den Vermögensstand. Oder KONTO und PORTFOLIO.
 Es macht keinen Sinn DEPOT und PORTFOLIO zu haben. Sie sind 2 Darstellungen des selben Vermögens. Die Summe wäre dann doppelt in Ihren Übersichten. 
@@ -41,6 +41,10 @@ mit Vorzeichen. Fehlende Pflichtdaten oder GraphQL-Fehler brechen den Abruf ab,
 statt als leere Bestände importiert zu werden. Die neue Umsatzabfrage liefert nur
 ein Buchungsdatum; ein gesondertes Wertstellungsdatum wird nicht ergänzt.
 Noch nicht verfügbare Renditen werden als „nicht verfügbar“ angezeigt.
+Die monetäre Performance-Zeile behält ihre bisherige Bezeichnung
+„Erfolgsrelevante Kapitalveränderungen“ und die Kennung
+`Performance sum_of_erfolgsrelevante_kapitalveraenderungen`. Ihr Betrag stammt
+aus dem aktuellen API-Feld `returnInEuro`.
 Die Zeitangabe von Wertpapierpositionen entspricht wie bisher dem Abrufzeitpunkt.
 
 Wertpapiernamen enthalten wieder die Whitebox-Anlageklasse in Klammern, zum Beispiel
@@ -60,10 +64,11 @@ Buchungsbetrag enthaltene Kosten vom Ausführungskurs abweichen. Fehlende oder
 nullwertige Stückzahlen/Beträge erhalten keinen berechneten Kurs. Der importierte
 Buchungsbetrag bleibt unverändert.
 
-Bei Cashbuchungen steht die Order-/Referenznummer am Anfang derselben Zeile,
-zum Beispiel `123456789 Ausführung Order Verkauf IE00TEST00001`. Sie wird nicht
-als alleinstehende Nummer in einer zusätzlichen Zeile angehängt. Alle Anpassungen
-an die neue Oberfläche sind in der gemeinsamen Version **1.16** zusammengefasst.
+Bei Cashbuchungen für Käufe/Verkäufe wird der vollständige Ordertext ausdrücklich
+als Titel übergeben, zum Beispiel `Ausführung Order Verkauf IE00TEST0001`.
+Der zugehörige Text enthält zuerst die in der Beschreibung enthaltene Referenz
+und danach die zusätzliche Umsatznummer, zum Beispiel `987654321 123456789`.
+Alle Anpassungen an die neue Oberfläche bleiben in Version **1.16** zusammengefasst.
 
 ### Installation einer angepassten Version
 
