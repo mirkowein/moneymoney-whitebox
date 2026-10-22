@@ -22,6 +22,23 @@
 -- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 -- THE SOFTWARE.
 --
+-- Historie:
+-- 1.00                        Initial
+-- 1.01                        Fix for Currencies in Depot
+-- 1.02                        Fix for ListAccounts
+-- 1.03                        Fix for Login
+-- 1.04                        New performance account for displaying Whitebox performance
+-- 1.05                        New portfolio account. You may have to choose from DEPOT or PORTFOLIO.
+-- 1.06                        Fix for new subdomain inside.whitebox.eu
+-- 1.07                        Fix for new design
+-- 1.08                        Fix for new portfolio design
+-- 1.09                        Fix for Login
+-- 1.10                        Fix for new urls
+-- 1.11                        Remove debug on non-existing value; Fix Portfolio Import by https://github.com/calcosta
+-- 1.12                        json for KONTO and DEPOT
+-- 1.13                        Fix for payment purpose. Removed unused functions.
+-- 1.14                        Fix for lua update MM.time()
+-- 1.15                        2026-05-21 Fix for login
 -- 1.16 (2026-10-21, unsigned version): Replace retired HTML/REST
 -- scraping with GraphQL, including asset-class names and transaction text.
 -- Keep cash order titles separate from their reference numbers.
