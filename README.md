@@ -1,3 +1,6 @@
+# Attention! Please use new fork:
+https://github.com/DWegmann/moneymoney-whitebox
+
 # moneymoney-whitebox
 An Extension to query your Whitebox.eu goals in [MoneyMoney](https://moneymoney-app.com).
 
