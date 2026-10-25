@@ -1,6 +1,46 @@
 # moneymoney-whitebox
 An Extension to query your Whitebox.eu goals in [MoneyMoney](https://moneymoney-app.com).
 
+## Herkunft und KI-Reparatur
+
+Dieses Projekt ist ein Fork von
+[mirkowein/moneymoney-whitebox](https://github.com/mirkowein/moneymoney-whitebox).
+Die ursprüngliche Erweiterung stammt von
+**[Mirko Weinschenk (mirkowein)](https://github.com/mirkowein)**.
+Die MIT-Lizenz und die ursprünglichen Copyright-Hinweise bleiben erhalten.
+
+Diese Fassung wurde durch KI unter Anleitung von
+[DWegmann](https://github.com/DWegmann) repariert und an die neue Whitebox-Oberfläche
+angepasst. Nach deren Umstellung funktionierte die Anmeldung weiterhin, die bisherige
+Kontensuche anhand der HTML-Seite jedoch nicht mehr. Die Reparatur ist in Version
+**1.16** zusammengefasst.
+
+### Unterschiede zum Original
+
+- **Datenzugriff:** Kontensuche, Bestände, Umsätze und Performance werden über
+  GraphQL statt über die bisherigen HTML-/REST-Abfragen geladen. Die Anmeldung
+  nutzt weiterhin das vorhandene Login-Formular.
+- **Buchungsbeträge und Texte:** Depotumsätze übernehmen den von Whitebox
+  gelieferten Betrag mit Vorzeichen statt einer Berechnung aus Stückzahl und Kurs.
+  Cash-Ordertitel und Referenznummern werden getrennt aufbereitet; Anlageklassen
+  werden über zusätzliche Depotmetadaten zugeordnet, soweit verfügbar.
+- **Abweichende Datenverfügbarkeit:** Die neue Umsatzabfrage liefert keinen
+  historischen Ausführungskurs und kein gesondertes Wertstellungsdatum.
+  Depotbuchungstexte zeigen deshalb einen aus Betrag und Stückzahl berechneten
+  Näherungswert als `Kurs ca.`; das Wertstellungsdatum wird nicht ergänzt.
+- **Fehlerprüfung:** Fehlende Pflichtdaten, ungültige Werte und GraphQL-Fehler
+  brechen den Abruf ab, statt unvollständige Daten als leere Bestände zu übernehmen.
+- **Tests und Dokumentation:** Ergänzt wurden Offline-Tests mit künstlichen Daten,
+  Referenzabfragen und eine [Implementierungsdokumentation](IMPLEMENTATION.md).
+  Die Tests ersetzen keine vollständige Prüfung mit einem echten Konto.
+- **Signatur:** Die reparierte Version ist unsigniert und benötigt für die reguläre
+  Veröffentlichung eine neue Signatur durch MoneyMoney.
+
+Die vier Kontoansichten `KONTO`, `DEPOT`, `PORTFOLIO` und `PERFORMANCE` bleiben
+erhalten. Bestehende Konten bleiben zuordenbar, wenn ihre bisherige Kennung dem
+vollständigen Whitebox-`slug` entspricht. Einzelheiten zur Installation und zu den
+technischen Grenzen stehen weiter unten.
+
 ![MoneyMoney screenshot mit Whitebox](Screenshots/Whitebox.png)
 
 Es werden jeweils 4 Accounts für jedes aktive Ziel angelegt:
